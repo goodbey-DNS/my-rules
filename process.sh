@@ -4,7 +4,7 @@
 set +e
 set +u
 
-# 配置（根目录版本）
+# 配置
 CACHE_DIR="$HOME/.cache/adblock-sources"
 ADBLOCK_FILE="adblock.txt"
 REPORT_FILE="reports.txt"
