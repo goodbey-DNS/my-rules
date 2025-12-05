@@ -1,0 +1,58 @@
+name: 规则自动更新
+
+on:
+  schedule:
+    - cron: '0 22 * * *'  # 北京时间早上6点
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v3
+        with:
+          ref: main
+          clean: true
+
+      - name: 网络源缓存
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/adblock-sources
+          key: sources-${{ hashFiles('sources.txt') }}
+          restore-keys: |
+            sources-
+
+      - name: 安装依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl ca-certificates parallel
+
+      - name: 执行规则处理（根目录）
+        run: |
+          chmod +x process.sh
+          rm -f adblock.txt reports.txt README.md
+          ./process.sh
+          ls -lh adblock.txt reports.txt README.md
+
+      - name: 提交更新
+        run: |
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+          git add adblock.txt reports.txt README.md
+          git commit -m "自动更新规则 $(date -u +%Y%m%d_%H%M%S)"
+          git push origin main
+
+      # 保活服务：防止 GitHub 暂停 Actions
+      - name: 保持 Actions 活跃
+        uses: gautamkrishnar/keepalive-workflow@v1
+        with:
+          commit_message: "🔧 保持 Actions 活跃"
+          time_elapsed: 25  # 25天无提交时自动创建空提交
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
