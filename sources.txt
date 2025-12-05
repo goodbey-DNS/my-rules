@@ -1,0 +1,43 @@
+#  1Hosts (Xtra)
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_70.txt
+#  Hagezi 终极广告拦截列表（Ultimate）
+https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/ultimate.txt
+#  OISD Blocklist Big
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_27.txt
+#  adgurad手机规则
+https://filters.adtidy.org/android/filters/15_optimized.txt
+#  秋风广告过滤
+https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/AWAvenue-Ads-Rule.txt
+#  秋风广告过滤补充
+https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Replenish.txt
+#  anti-ad
+https://anti-ad.net/adguard.txt
+#  AdGuard DNS filter
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt
+#  ShadowWhisperer Tracking List
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_69.txt
+#  adgurad 基础过滤
+https://filters.adtidy.org/android/filters/2_optimized.txt
+# adgurad  移动广告
+https://filters.adtidy.org/android/filters/11_optimized.txt
+#  Peter Lowe's Blocklist
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_3.txt
+#  网络钓鱼URL黑名单
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_30.txt
+#  不可信网站列表
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_10.txt
+#  恶意软件列表
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_50.txt
+#  恶意软件和欺诈
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_12.txt
+#  No Google
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_37.txt
+#  拦截已知传播恶意软件和间谍的域名
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_11.txt
+#  AdRules DNS List
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_29.txt
+#  hblock
+https://hblock.molinero.dev/hosts_adblock.txt
+#   HaGeZi's Xiaomi Tracker Blocklist
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_60.txt
+
