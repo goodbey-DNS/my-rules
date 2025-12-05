@@ -2,7 +2,7 @@ name: 规则自动更新
 
 on:
   schedule:
-    - cron: '0 22 * * *'  # 北京时间早上6点
+    - cron: '0 2 * * *'  # 每天北京时间10点
   workflow_dispatch:
 
 permissions:
@@ -33,11 +33,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y curl ca-certificates parallel
 
-      - name: 执行规则处理（根目录）
+      - name: 执行规则处理
         run: |
-          chmod +x process.sh
+          chmod +x scripts/process.sh
           rm -f adblock.txt reports.txt README.md
-          ./process.sh
+          ./scripts/process.sh
           ls -lh adblock.txt reports.txt README.md
 
       - name: 提交更新
@@ -47,12 +47,3 @@ jobs:
           git add adblock.txt reports.txt README.md
           git commit -m "自动更新规则 $(date -u +%Y%m%d_%H%M%S)"
           git push origin main
-
-      # 保活服务：防止 GitHub 暂停 Actions
-      - name: 保持 Actions 活跃
-        uses: gautamkrishnar/keepalive-workflow@v1
-        with:
-          commit_message: "🔧 保持 Actions 活跃"
-          time_elapsed: 25  # 25天无提交时自动创建空提交
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
