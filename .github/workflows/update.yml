@@ -2,7 +2,7 @@ name: 规则自动更新
 
 on:
   schedule:
-    - cron: '0 2 * * *'  # 每天北京时间10点
+    - cron: '0 22 * * *'  # 北京时间早上6点
   workflow_dispatch:
 
 permissions:
@@ -35,9 +35,9 @@ jobs:
 
       - name: 执行规则处理
         run: |
-          chmod +x scripts/process.sh
+          chmod +x process.sh
           rm -f adblock.txt reports.txt README.md
-          ./scripts/process.sh
+          ./process.sh
           ls -lh adblock.txt reports.txt README.md
 
       - name: 提交更新
