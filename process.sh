@@ -31,7 +31,6 @@ get_repo_path() {
 
 extract_valid_lines() {
     [[ ! -f "$1" ]] && return 0
-    # 移除 BOM 头、行尾空格、行首空格
     sed 's/^\xEF\xBB\xBF//;s/[[:space:]]*$//;s/^[[:space:]]*//' "$1" | \
     grep -v '^#' | grep -v '^$' | sed 's/[[:space:]]*#.*$//' | grep -v '^$' || true
 }
@@ -52,7 +51,6 @@ if [[ $source_count -gt 0 ]]; then
         
         cache_file="$CACHE_DIR/$(echo -n "$url" | md5sum | cut -d' ' -f1)"
         
-        # 缓存检查（6小时）
         if [[ -f "$cache_file" ]]; then
             cache_age=$(( $(date +%s) - $(stat -c %Y "$cache_file" 2>/dev/null || echo 0) ))
             if [[ $cache_age -lt 21600 ]]; then
@@ -62,7 +60,6 @@ if [[ $source_count -gt 0 ]]; then
             fi
         fi
         
-        # 下载
         temp_file="$WORK_DIR/$(date +%s%N).tmp"
         if curl --connect-timeout 5 --max-time 30 --retry 2 -sSL "$url" -o "$temp_file" 2>/dev/null && [[ -s "$temp_file" ]]; then
             mv "$temp_file" "$cache_file"
