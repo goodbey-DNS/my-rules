@@ -81,7 +81,3 @@
 ||api.huangye.miui.com^
 ||os.oceancloudapi.com^
 ||ice-stunserver.xdrtc.com^
-||0--0.info^
-||0--4.com^
-||0--d.com^
-||0--foodwarez.da.ru^
