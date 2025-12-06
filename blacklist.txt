@@ -1,3 +1,8 @@
+||keyhub.zijieapi.com^
+||deviceapi.micloud.xiaomi.net^
+||miui-xiaomishop.retail.xiaomi.com^
+||network-detect-vip.xunlei.com^
+||control-vip.xunlei.com^
 ||baidu.com^
 ||act.scrcu.com^
 ||api-pan.xunlei.com^
