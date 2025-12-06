@@ -2,7 +2,7 @@ name: 规则自动更新
 
 on:
   schedule:
-    - cron: '0 22 * * *'  # 北京时间早上6点
+    - cron: '0 18 * * *'  # 北京时间凌晨2点
   workflow_dispatch:
 
 permissions:
