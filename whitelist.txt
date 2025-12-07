@@ -51,3 +51,8 @@
 @@||xc.mobile3.ccb.cn^
 @@||www.66tutup.com^
 @@||www.kimi.com^
+@@||appsupport.moonshot.cn^
+@@||opencopy.homes^
+@@||aomeisoftware.com^
+@@||system.cbackup.com^
+@@||cloudflare.com^
