@@ -56,3 +56,4 @@
 @@||aomeisoftware.com^
 @@||system.cbackup.com^
 @@||cloudflare.com^
+@@||dns.google^
