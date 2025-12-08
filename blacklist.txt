@@ -4,6 +4,11 @@
 ||network-detect-vip.xunlei.com^
 ||control-vip.xunlei.com^
 ||baidu.com^
+||api.xmpush.xiaomi.com^
+||video-zb.cloudvideocdn.taobao.com^
+||game.weixin.qq.com^
+||alimei-api.aliyun.com^
+||multi-manifest.m.taobao.com^
 ||act.scrcu.com^
 ||api-pan.xunlei.com^
 ||api-play-hj.amemv.com^
