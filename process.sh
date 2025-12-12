@@ -21,11 +21,17 @@ CACHE_DIR="$HOME/.cache/adblock-sources"
 ADBLOCK_FILE="adblock.txt"
 REPORT_FILE="reports.txt"
 README_FILE="README.md"
-WORK_DIR="/tmp/adblock-work-$$"
 
-# 创建必要目录
-if ! mkdir -p "$CACHE_DIR" "$WORK_DIR" 2>/dev/null; then
-    echo "❌ 错误：无法创建工作目录" >&2
+# 创建缓存目录
+if ! mkdir -p "$CACHE_DIR" 2>/dev/null; then
+    echo "❌ 错误：无法创建缓存目录" >&2
+    exit 1
+fi
+
+# 创建临时工作目录
+WORK_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t adblock-work)
+if [[ ! -d "$WORK_DIR" ]]; then
+    echo "❌ 错误：无法创建临时工作目录" >&2
     exit 1
 fi
 
