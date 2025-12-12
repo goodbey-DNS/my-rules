@@ -1,8 +1,20 @@
 #!/bin/bash
 # -*- coding: utf-8 -*-
-# 最终生产级版本 - 仅去重合并，无裁剪
-set +e
-set +u
+#
+# 广告拦截规则自动化处理脚本
+# 版本: 1.0.0
+# 用途: 从多个网络源下载、清洗、去重并合并广告拦截规则
+# 
+# 功能特性:
+#   - 智能缓存机制（6小时有效期）
+#   - 自动去重和规则验证
+#   - 黑名单重复检测
+#   - 完整的错误处理和日志
+#
+# 运行环境: GitHub Actions (ubuntu-latest)
+# 依赖工具: bash, curl, grep, sed, sort, wc, find, stat
+#
+set -eo pipefail
 
 # 配置
 CACHE_DIR="$HOME/.cache/adblock-sources"
@@ -11,95 +23,175 @@ REPORT_FILE="reports.txt"
 README_FILE="README.md"
 WORK_DIR="/tmp/adblock-work-$$"
 
-mkdir -p "$CACHE_DIR" "$WORK_DIR" 2>/dev/null
+# 创建必要目录
+if ! mkdir -p "$CACHE_DIR" "$WORK_DIR" 2>/dev/null; then
+    echo "❌ 错误：无法创建工作目录" >&2
+    exit 1
+fi
 
+# 清理函数：删除临时工作目录
+# 在脚本退出、错误、中断或终止时自动调用
 cleanup() {
+    local exit_code=$?
     rm -rf "$WORK_DIR" 2>/dev/null
+    return $exit_code
 }
-trap cleanup EXIT
+trap cleanup EXIT ERR INT TERM
 
+# 获取北京时间
+# 返回: 格式化的北京时间字符串
 beijing_time() {
     TZ='Asia/Shanghai' date '+%Y年%m月%d日 %H:%M:%S (北京时间)'
 }
 
+# 提取文件中的有效行
+# 参数: $1 - 文件路径
+# 功能: 移除 BOM、空行、注释行和行尾注释
+# 返回: 有效内容行（通过 stdout）
 extract_valid_lines() {
     [[ ! -f "$1" ]] && return 0
-    sed 's/^\xEF\xBB\xBF//;s/[[:space:]]*$//;s/^[[:space:]]*//' "$1" | \
-    grep -v '^#' | grep -v '^$' | sed 's/[[:space:]]*#.*$//' | grep -v '^$' || true
+    [[ ! -r "$1" ]] && return 0
+    sed 's/^\xEF\xBB\xBF//;s/[[:space:]]*$//;s/^[[:space:]]*//' "$1" 2>/dev/null | \
+    grep -v '^#' 2>/dev/null | grep -v '^$' 2>/dev/null | \
+    sed 's/[[:space:]]*#.*$//' 2>/dev/null | grep -v '^$' 2>/dev/null || true
 }
+
+# 提取白名单的有效行（保留 $important 修饰符）
+# 参数: $1 - 文件路径
+# 功能: 移除 BOM、空行、纯注释行，但保留 $important
+# 返回: 有效内容行（通过 stdout）
+extract_whitelist_lines() {
+    [[ ! -f "$1" ]] && return 0
+    [[ ! -r "$1" ]] && return 0
+    
+    while IFS= read -r line; do
+        # 移除 BOM 和首尾空白
+        line=$(echo "$line" | sed 's/^\xEF\xBB\xBF//;s/^[[:space:]]*//;s/[[:space:]]*$//')
+        
+        # 跳过空行和纯注释行
+        [[ -z "$line" || "$line" =~ ^# ]] && continue
+        
+        # 如果包含 $important，保留整行
+        if [[ "$line" =~ \$important ]]; then
+            echo "$line"
+        else
+            # 否则移除行尾注释
+            clean_line=$(echo "$line" | sed 's/[[:space:]]*#.*$//')
+            [[ -n "$clean_line" ]] && echo "$clean_line"
+        fi
+    done < "$1" 2>/dev/null || true
+}
+
+# 前置检查
+if [[ ! -f "sources.txt" ]]; then
+    echo "❌ 错误：sources.txt 文件不存在" >&2
+    echo "请创建 sources.txt 并添加广告规则源地址（每行一个URL）" >&2
+    exit 1
+fi
 
 # 主流程（7步骤）
 echo "步骤1/7: 清理过期缓存..."
-find "$CACHE_DIR" -type f -mtime +7 -delete 2>/dev/null
-old_cache_count=$(find "$CACHE_DIR" -type f 2>/dev/null | wc -l)
+find "$CACHE_DIR" -maxdepth 1 -type f -mtime +7 -delete 2>/dev/null || true
+old_cache_count=$(find "$CACHE_DIR" -maxdepth 1 -type f 2>/dev/null | wc -l || echo 0)
 echo "  └─ 保留缓存：$old_cache_count 个"
 
-echo "步骤2/7: 下载网络源（并行模式）..."
+echo "步骤2/7: 下载网络源（串行模式）..."
 source_list=$(extract_valid_lines "sources.txt")
 if [[ -n "$source_list" ]]; then
-    source_count=$(echo "$source_list" | grep -c '.')
+    set +e
+    source_count=$(echo "$source_list" | grep -c '.' || echo 0)
+    set -e
 else
     source_count=0
 fi
 echo "  └─ 待处理源：$source_count 个"
 
-> raw-rules.txt
+# 创建并验证输出文件
+if ! > raw-rules.txt 2>/dev/null; then
+    echo "❌ 错误：无法创建 raw-rules.txt 文件" >&2
+    exit 1
+fi
+
 success_count=0
 failed_count=0
 
-download_source() {
-    local url="$1"
-    local cache_file="$CACHE_DIR/$(echo -n "$url" | md5sum | cut -d' ' -f1)"
-    local temp_file="$WORK_DIR/$(date +%s%N)-$RANDOM.tmp"
-    
-    if [[ -f "$cache_file" ]]; then
-        cache_age=$(( $(date +%s) - $(stat -c %Y "$cache_file" 2>/dev/null || echo 0) ))
-        if [[ $cache_age -lt 21600 ]]; then
-            cat "$cache_file"
-            echo "SUCCESS" >&2
-            return 0
-        fi
-    fi
-    
-    if curl --connect-timeout 5 --max-time 30 --retry 2 -sSL "$url" -o "$temp_file" 2>/dev/null && [[ -s "$temp_file" ]]; then
-        if grep -qE '^(<!DOCTYPE|<html|<\?xml)' "$temp_file" 2>/dev/null; then
-            rm -f "$temp_file"
-            echo "FAILED" >&2
-            return 1
+if [[ $source_count -gt 0 ]]; then
+    set +e  # 允许下载失败
+    while IFS= read -r url; do
+        [[ -z "$url" ]] && continue
+        
+        # 验证 URL 格式和长度
+        if [[ ! "$url" =~ ^https?:// ]]; then
+            # 安全输出 URL（防止控制字符注入）
+            safe_url=$(echo "$url" | tr -cd '[:print:]' | head -c 100)
+            echo "  └─ ⚠️  跳过无效URL: ${safe_url}" >&2
+            ((failed_count++))
+            continue
         fi
         
-        mv "$temp_file" "$cache_file"
-        cat "$cache_file"
-        echo "SUCCESS" >&2
-        return 0
-    else
-        rm -f "$temp_file"
-        echo "FAILED" >&2
-        return 1
-    fi
-}
-
-export -f download_source
-export CACHE_DIR WORK_DIR
-
-if [[ $source_count -gt 0 ]]; then
-    if command -v parallel >/dev/null 2>&1; then
-        download_log="$WORK_DIR/download.log"
-        echo "$source_list" | parallel -j 8 --no-notice download_source 2>"$download_log" >> raw-rules.txt || true
-        success_count=$(grep -c 'SUCCESS' "$download_log" 2>/dev/null || echo 0)
-        failed_count=$(grep -c 'FAILED' "$download_log" 2>/dev/null || echo 0)
-    else
-        while IFS= read -r url; do
-            [[ -z "$url" ]] && continue
-            if download_source "$url" >> raw-rules.txt 2>/dev/null; then
+        # 限制 URL 长度（防止命令行溢出）
+        if [[ ${#url} -gt 2048 ]]; then
+            echo "  └─ ⚠️  URL过长（超过2048字符），跳过" >&2
+            ((failed_count++))
+            continue
+        fi
+        
+        cache_file="$CACHE_DIR/$(echo -n "$url" | md5sum | cut -d' ' -f1)"
+        temp_file="$WORK_DIR/$(date +%s%N)-$RANDOM.tmp"
+        
+        # 检查缓存
+        if [[ -f "$cache_file" && -r "$cache_file" ]]; then
+            cache_age=$(( $(date +%s) - $(stat -c %Y "$cache_file" 2>/dev/null || echo 0) ))
+            if [[ $cache_age -lt 21600 ]]; then
+                cat "$cache_file" >> raw-rules.txt 2>/dev/null || true
                 ((success_count++))
+                continue
+            fi
+        fi
+        
+        # 下载新文件（限制100MB）
+        if curl --connect-timeout 5 --max-time 30 --retry 2 --max-filesize 104857600 -sSL "$url" -o "$temp_file" 2>/dev/null && [[ -s "$temp_file" ]]; then
+            # 检测文件大小（额外保护）
+            downloaded_size=$(stat -c %s "$temp_file" 2>/dev/null || echo 0)
+            if [[ $downloaded_size -gt 104857600 ]]; then
+                safe_url=$(echo "$url" | tr -cd '[:print:]' | head -c 100)
+                echo "  └─ ⚠️  文件过大，跳过: ${safe_url}" >&2
+                rm -f "$temp_file"
+                ((failed_count++))
+                continue
+            fi
+            
+            # 检测HTML错误页面
+            if grep -qE '^(<!DOCTYPE|<html|<\?xml)' "$temp_file" 2>/dev/null; then
+                rm -f "$temp_file"
+                ((failed_count++))
+                continue
+            fi
+            
+            # 原子性操作：先移动，验证后追加
+            if mv "$temp_file" "$cache_file" 2>/dev/null; then
+                if cat "$cache_file" >> raw-rules.txt 2>/dev/null; then
+                    ((success_count++))
+                else
+                    ((failed_count++))
+                fi
             else
+                rm -f "$temp_file"
                 ((failed_count++))
             fi
-        done <<< "$source_list"
-    fi
+        else
+            rm -f "$temp_file"
+            ((failed_count++))
+        fi
+    done <<< "$source_list"
+    set -e  # 恢复错误退出
     
     echo "  └─ 总计：成功 $success_count | 失败 $failed_count"
+    
+    if [[ $success_count -eq 0 && $failed_count -gt 0 ]]; then
+        echo "  └─ ⚠️  所有网络源下载失败，将仅使用本地规则" >&2
+    fi
+    
     [[ -s raw-rules.txt ]] && echo "  └─ 原始规则：$(wc -l < raw-rules.txt) 行"
 else
     echo "  └─ ⚠️  无有效网络源" >&2
@@ -107,17 +199,22 @@ fi
 
 echo "步骤3/7: 清洗与去重..."
 if [[ -s raw-rules.txt ]]; then
+    set +e  # 允许 grep 无匹配
     # 仅保留基础语法：||domain.com^ (不含路径、端口、参数，支持单字符域名)
-    grep '^||' raw-rules.txt | \
-    grep -E '^||[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?\^$' | \
+    (grep '^\|\|' raw-rules.txt | \
+    grep -E '^\|\|[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?\^$' | \
     grep -v '^@@' | \
-    sort -u > cleaned.txt 2>/dev/null
+    sort -u > cleaned.txt) 2>/dev/null || true
+    set -e  # 恢复错误退出
+    
+    # 确保 cleaned.txt 存在
+    [[ ! -f cleaned.txt ]] && touch cleaned.txt
     
     cleaned_count=$(wc -l < cleaned.txt 2>/dev/null || echo 0)
     echo "  └─ 清洗后：$cleaned_count 条"
 else
     echo "  └─ ⚠️  raw-rules.txt 为空，跳过" >&2
-    > cleaned.txt
+    > cleaned.txt || touch cleaned.txt
 fi
 
 echo "步骤4/7: 检测黑名单重复..."
@@ -133,22 +230,38 @@ duplicate_count=0
 > temp-dup.txt
 
 if [[ -s cleaned.txt && -n "$blacklist_content" ]]; then
+    set +e  # 允许 grep 未匹配
+    
     while IFS= read -r rule; do
         [[ -z "$rule" ]] && continue
-        base_rule="${rule%%\**}"
-        base_rule="${base_rule%%\#*}"
-        base_rule=$(echo "$base_rule" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-        [[ -z "$base_rule" ]] && continue
         
-        grep -Fxq "$base_rule" cleaned.txt 2>/dev/null && echo "$rule" >> temp-dup.txt && ((duplicate_count++))
+        # 移除行尾注释并清理空白
+        clean_rule="${rule%%\#*}"
+        clean_rule=$(echo "$clean_rule" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        [[ -z "$clean_rule" ]] && continue
+        
+        # 标准化为 ||domain^ 格式
+        normalized_rule="$clean_rule"
+        [[ "$normalized_rule" != "||"* ]] && normalized_rule="||${normalized_rule}"
+        [[ "$normalized_rule" != *"^" ]] && normalized_rule="${normalized_rule}^"
+        
+        # 完全匹配检测（基础规则对基础规则）
+        if grep -Fxq "$normalized_rule" cleaned.txt 2>/dev/null; then
+            echo "$rule" >> temp-dup.txt
+            ((duplicate_count++))
+        fi
     done <<< "$blacklist_content"
+    
+    set -e  # 恢复错误退出
 fi
 
 if [[ $duplicate_count -gt 0 ]]; then
     echo "  └─ 发现重复：$duplicate_count 条" >&2
     {
         echo "发现重复规则（${duplicate_count}条）："
-        nl -w 1 -s '. ' temp-dup.txt
+        if [[ -s temp-dup.txt ]]; then
+            nl -w 1 -s '. ' temp-dup.txt 2>/dev/null || cat -n temp-dup.txt
+        fi
         echo ""
         echo "💡 建议：可从 blacklist.txt 移除以上规则，减少冗余"
     } >> "$REPORT_FILE"
@@ -160,16 +273,18 @@ rm -f temp-dup.txt
 
 echo "步骤5/7: 生成规则文件..."
 sources_lines=$(extract_valid_lines "sources.txt")
-whitelist_lines=$(extract_valid_lines "whitelist.txt")
+whitelist_lines=$(extract_whitelist_lines "whitelist.txt")
 blacklist_lines=$(extract_valid_lines "blacklist.txt")
 
+set +e  # 允许 grep 无匹配
 total_sources=0
 total_whitelist=0
 total_blacklist=0
-[[ -n "$sources_lines" ]] && total_sources=$(echo "$sources_lines" | grep -c '.')
-[[ -n "$whitelist_lines" ]] && total_whitelist=$(echo "$whitelist_lines" | grep -c '.')
-[[ -n "$blacklist_lines" ]] && total_blacklist=$(echo "$blacklist_lines" | grep -c '.')
+[[ -n "$sources_lines" ]] && total_sources=$(echo "$sources_lines" | grep -c '.' || echo 0)
+[[ -n "$whitelist_lines" ]] && total_whitelist=$(echo "$whitelist_lines" | grep -c '.' || echo 0)
+[[ -n "$blacklist_lines" ]] && total_blacklist=$(echo "$blacklist_lines" | grep -c '.' || echo 0)
 total_rules=$(wc -l < cleaned.txt 2>/dev/null || echo 0)
+set -e  # 恢复错误退出
 
 {
     echo "! 标题：广告拦截规则"
@@ -177,19 +292,45 @@ total_rules=$(wc -l < cleaned.txt 2>/dev/null || echo 0)
     echo "! 规则总数：$((total_rules + total_whitelist + total_blacklist)) 条"
     echo "! 网络源数量：$total_sources 个"
     echo "! 自定义规则：$total_whitelist 条白名单 + $total_blacklist 条黑名单"
-    echo "! 文件大小：PLACEHOLDER"
+    echo "! 文件大小：@@FILE_SIZE_PLACEHOLDER@@"
     echo "! 运行状态：✅ 正常"
     echo ""
 } > "$ADBLOCK_FILE"
 
 # 最终合并顺序：白名单 → 黑名单 → 网络源
-extract_valid_lines "whitelist.txt" >> "$ADBLOCK_FILE"
-extract_valid_lines "blacklist.txt" >> "$ADBLOCK_FILE"
-cat cleaned.txt >> "$ADBLOCK_FILE" 2>/dev/null || true
+set +e  # 允许文件不存在
+extract_whitelist_lines "whitelist.txt" >> "$ADBLOCK_FILE" 2>/dev/null
+extract_valid_lines "blacklist.txt" >> "$ADBLOCK_FILE" 2>/dev/null
+if [[ -s cleaned.txt ]]; then
+    cat cleaned.txt >> "$ADBLOCK_FILE" 2>/dev/null || {
+        echo "❌ 错误：无法追加网络源规则" >&2
+        exit 1
+    }
+fi
+set -e  # 恢复错误退出
 
 # 计算并替换文件大小占位符
 file_size=$(du -h "$ADBLOCK_FILE" 2>/dev/null | cut -f1 || echo "0K")
-sed -i "s/PLACEHOLDER/$file_size/" "$ADBLOCK_FILE" 2>/dev/null || true
+if ! sed -i "s|@@FILE_SIZE_PLACEHOLDER@@|$file_size|" "$ADBLOCK_FILE" 2>/dev/null; then
+    # 备用方案：使用临时文件
+    sed "s|@@FILE_SIZE_PLACEHOLDER@@|$file_size|" "$ADBLOCK_FILE" > "$ADBLOCK_FILE.tmp" 2>/dev/null && \
+    mv "$ADBLOCK_FILE.tmp" "$ADBLOCK_FILE" 2>/dev/null || true
+fi
+
+# 验证生成的规则文件
+if [[ ! -s "$ADBLOCK_FILE" ]]; then
+    echo "❌ 错误：生成的规则文件为空" >&2
+    exit 1
+fi
+
+set +e  # 允许 grep 无匹配
+actual_rules=$( (grep -v '^!' "$ADBLOCK_FILE" | grep -v '^$' | wc -l) 2>/dev/null || echo 0)
+set -e  # 恢复错误退出
+
+if [[ $actual_rules -eq 0 ]]; then
+    echo "❌ 错误：规则文件不包含有效规则" >&2
+    exit 1
+fi
 
 echo "步骤6/7: 生成说明文档..."
 {
@@ -208,8 +349,35 @@ echo "步骤6/7: 生成说明文档..."
     echo "| \`reports.txt\` | 检测报告 | 自动生成，只读 |"
 } > "$README_FILE"
 
+# 验证说明文档
+if [[ ! -s "$README_FILE" ]]; then
+    echo "❌ 错误：说明文档生成失败" >&2
+    exit 1
+fi
+
 echo "步骤7/7: 清理临时文件..."
 rm -f raw-rules.txt cleaned.txt temp-dup.txt
 
+# 确保所有统计变量有效（在使用前设置默认值）
+source_count=${source_count:-0}
+success_count=${success_count:-0}
+failed_count=${failed_count:-0}
+total_rules=${total_rules:-0}
+total_whitelist=${total_whitelist:-0}
+total_blacklist=${total_blacklist:-0}
+file_size=${file_size:-0K}
+
+echo ""
 echo "✅ 所有步骤处理完成！"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "📊 处理统计："
+echo "  • 网络源：$source_count 个（成功 $success_count | 失败 $failed_count）"
+echo "  • 规则总数：$((total_rules + total_whitelist + total_blacklist)) 条"
+echo "  • 文件大小：$file_size"
+echo ""
+echo "📁 生成文件："
+echo "  ✓ $ADBLOCK_FILE"
+echo "  ✓ $REPORT_FILE"
+echo "  ✓ $README_FILE"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 exit 0
