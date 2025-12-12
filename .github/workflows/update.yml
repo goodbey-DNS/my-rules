@@ -1,8 +1,17 @@
+# 广告拦截规则自动更新工作流
+# 版本: 1.0.0
+# 功能: 每日自动下载、处理并提交广告拦截规则
+# 触发方式:
+#   1. 定时任务: 每天北京时间凌晨2点自动运行
+#   2. 手动触发: 在 Actions 页面点击 "Run workflow"
+# 
+# 生成文件: adblock.txt, reports.txt, README.md
+
 name: 规则自动更新
 
 on:
   schedule:
-    - cron: '0 18 * * *'  # 北京时间凌晨2点
+    - cron: '0 18 * * *'  # UTC 18:00 = 北京时间次日凌晨2点
   workflow_dispatch:
 
 permissions:
@@ -11,50 +20,109 @@ permissions:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     
     steps:
       - name: 检出仓库
         uses: actions/checkout@v4
         with:
           ref: main
+          fetch-depth: 1
           clean: true
 
       - name: 网络源缓存
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cache/adblock-sources
           key: sources-${{ hashFiles('sources.txt') }}
           restore-keys: |
             sources-
 
+      - name: 环境检查
+        continue-on-error: true
+        run: |
+          echo "━━━━━━ 环境信息 ━━━━━━"
+          echo "磁盘空间："
+          df -h | grep -E '^/dev|Filesystem' || true
+          echo ""
+          echo "内存使用："
+          free -h || true
+          echo ""
+          echo "网络连通性："
+          ping -c 2 www.github.com || echo "⚠️  网络连接异常"
+
       - name: 安装依赖
         run: |
-          sudo apt-get update
-          sudo apt-get install -y curl ca-certificates parallel
+          if ! sudo apt-get update; then
+            echo "❌ apt-get update 失败"
+            exit 1
+          fi
+          
+          if ! sudo apt-get install -y curl ca-certificates; then
+            echo "❌ 依赖安装失败"
+            exit 1
+          fi
+          
+          echo "✅ 依赖安装成功"
 
       - name: 执行规则处理（去重合并）
         run: |
-          chmod +x process.sh
+          if [[ ! -f process.sh ]]; then
+            echo "❌ process.sh 文件不存在"
+            exit 1
+          fi
+          
+          if ! chmod +x process.sh; then
+            echo "❌ 无法设置 process.sh 执行权限"
+            exit 1
+          fi
+          
           rm -f adblock.txt reports.txt README.md
           
-          if ! ./process.sh; then
+          if ! ./process.sh 2>&1 | tee process.log; then
             echo "❌ 脚本执行失败"
+            echo "━━━━━━ 错误日志（最后50行）━━━━━━"
+            tail -n 50 process.log || true
             exit 1
           fi
           
           if [[ ! -f adblock.txt ]] || [[ ! -f reports.txt ]] || [[ ! -f README.md ]]; then
             echo "❌ 生成文件缺失"
+            ls -la || true
             exit 1
           fi
           
           ls -lh adblock.txt reports.txt README.md
+          rm -f process.log
+          
+          # 验证文件内容
+          if [[ $(wc -l < adblock.txt) -lt 10 ]]; then
+            echo "❌ adblock.txt 内容异常（少于10行）"
+            exit 1
+          fi
 
       - name: 提交更新
         run: |
+          set -e
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
-          git add adblock.txt reports.txt README.md
+          git config --local core.autocrlf false
+          git config --local core.safecrlf false
+          
+          # 确保只提交预期文件
+          git add -f adblock.txt reports.txt README.md
+          
+          # 验证文件已被暂存
+          staged_files=$(git diff --cached --name-only | wc -l)
+          if [[ $staged_files -eq 0 ]]; then
+            echo "⚠️  没有文件被暂存，可能文件未变更"
+          fi
+          
+          # 检查是否有其他未跟踪文件
+          if [[ -n "$(git status --porcelain | grep '^??' | grep -v 'process.log')" ]]; then
+            echo "⚠️  检测到未跟踪文件："
+            git status --porcelain | grep '^??'
+          fi
           
           if git diff --cached --quiet; then
             echo "📌 无规则变更，跳过提交"
@@ -63,14 +131,22 @@ jobs:
           
           git commit -m "自动更新规则 $(date -u +%Y%m%d_%H%M%S)"
           
-          # 重试推送机制（最多3次）
+          # 重试推送机制（最多3次，带随机延迟）
           for i in {1..3}; do
             if git push origin main; then
               echo "✅ 规则已更新并推送"
               exit 0
             else
               echo "⚠️  推送失败，尝试 pull --rebase (第 $i 次)"
-              git pull --rebase origin main
+              sleep $((RANDOM % 10))
+              
+              if ! git pull --rebase origin main; then
+                echo "❌ Rebase 失败，可能存在冲突"
+                git rebase --abort 2>/dev/null || true
+                git status
+                exit 1
+              fi
+              
               sleep 2
             fi
           done
