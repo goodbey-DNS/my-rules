@@ -117,21 +117,25 @@ failed_count=0
 
 if [[ $source_count -gt 0 ]]; then
     set +e  # 允许下载失败
+    current=0
     while IFS= read -r url; do
         [[ -z "$url" ]] && continue
+        ((current++))
+        
+        # 显示当前处理的URL（截取前60字符）
+        short_url=$(echo "$url" | head -c 60)
+        echo "  [$current/$source_count] ${short_url}..."
         
         # 验证 URL 格式和长度
         if [[ ! "$url" =~ ^https?:// ]]; then
-            # 安全输出 URL（防止控制字符注入）
-            safe_url=$(echo "$url" | tr -cd '[:print:]' | head -c 100)
-            echo "  └─ ⚠️  跳过无效URL: ${safe_url}" >&2
+            echo "    └─ ❌ URL格式无效" >&2
             ((failed_count++))
             continue
         fi
         
         # 限制 URL 长度（防止命令行溢出）
         if [[ ${#url} -gt 2048 ]]; then
-            echo "  └─ ⚠️  URL过长（超过2048字符），跳过" >&2
+            echo "    └─ ❌ URL过长" >&2
             ((failed_count++))
             continue
         fi
@@ -144,26 +148,35 @@ if [[ $source_count -gt 0 ]]; then
             cache_age=$(( $(date +%s) - $(stat -c %Y "$cache_file" 2>/dev/null || echo 0) ))
             if [[ $cache_age -lt 21600 ]]; then
                 cat "$cache_file" >> raw-rules.txt 2>/dev/null || true
+                echo "    └─ ✅ 使用缓存"
                 ((success_count++))
                 continue
             fi
         fi
         
         # 下载新文件（限制100MB）
-        if curl --connect-timeout 5 --max-time 30 --retry 2 --max-filesize 104857600 -sSL "$url" -o "$temp_file" 2>/dev/null && [[ -s "$temp_file" ]]; then
+        curl_output=$(mktemp)
+        if curl --connect-timeout 10 --max-time 60 --retry 2 --max-filesize 104857600 -sSL "$url" -o "$temp_file" 2>"$curl_output"; then
+            if [[ ! -s "$temp_file" ]]; then
+                echo "    └─ ❌ 下载文件为空" >&2
+                rm -f "$temp_file" "$curl_output"
+                ((failed_count++))
+                continue
+            fi
+            
             # 检测文件大小（额外保护）
             downloaded_size=$(stat -c %s "$temp_file" 2>/dev/null || echo 0)
             if [[ $downloaded_size -gt 104857600 ]]; then
-                safe_url=$(echo "$url" | tr -cd '[:print:]' | head -c 100)
-                echo "  └─ ⚠️  文件过大，跳过: ${safe_url}" >&2
-                rm -f "$temp_file"
+                echo "    └─ ❌ 文件过大 (${downloaded_size} bytes)" >&2
+                rm -f "$temp_file" "$curl_output"
                 ((failed_count++))
                 continue
             fi
             
             # 检测HTML错误页面
-            if grep -qE '^(<!DOCTYPE|<html|<\?xml)' "$temp_file" 2>/dev/null; then
-                rm -f "$temp_file"
+            if head -n 5 "$temp_file" | grep -qE '^(<!DOCTYPE|<html|<\?xml)' 2>/dev/null; then
+                echo "    └─ ❌ 返回HTML错误页面" >&2
+                rm -f "$temp_file" "$curl_output"
                 ((failed_count++))
                 continue
             fi
@@ -171,16 +184,24 @@ if [[ $source_count -gt 0 ]]; then
             # 原子性操作：先移动，验证后追加
             if mv "$temp_file" "$cache_file" 2>/dev/null; then
                 if cat "$cache_file" >> raw-rules.txt 2>/dev/null; then
+                    rules_count=$(wc -l < "$cache_file" 2>/dev/null || echo 0)
+                    echo "    └─ ✅ 下载成功 ($rules_count 行)"
                     ((success_count++))
                 else
+                    echo "    └─ ❌ 追加文件失败" >&2
                     ((failed_count++))
                 fi
             else
+                echo "    └─ ❌ 移动文件失败" >&2
                 rm -f "$temp_file"
                 ((failed_count++))
             fi
+            rm -f "$curl_output"
         else
-            rm -f "$temp_file"
+            # 显示 curl 错误信息
+            error_msg=$(cat "$curl_output" 2>/dev/null | head -n 1 | tr -cd '[:print:]' | head -c 100)
+            [[ -n "$error_msg" ]] && echo "    └─ ❌ 下载失败: $error_msg" >&2 || echo "    └─ ❌ 下载失败" >&2
+            rm -f "$temp_file" "$curl_output"
             ((failed_count++))
         fi
     done <<< "$source_list"
