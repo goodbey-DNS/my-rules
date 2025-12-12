@@ -28,20 +28,12 @@ if ! mkdir -p "$CACHE_DIR" 2>/dev/null; then
     exit 1
 fi
 
-# 创建临时工作目录
-WORK_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t adblock-work)
-if [[ ! -d "$WORK_DIR" ]]; then
+# 创建临时工作目录（在当前目录下，GitHub Actions 可信任）
+WORK_DIR=".tmp-work-$$"
+if ! mkdir -p "$WORK_DIR" 2>/dev/null; then
     echo "❌ 错误：无法创建临时工作目录" >&2
     exit 1
 fi
-
-# 测试临时目录写入权限
-test_file="$WORK_DIR/.test-$$"
-if ! touch "$test_file" 2>/dev/null; then
-    echo "❌ 错误：临时目录无写入权限: $WORK_DIR" >&2
-    exit 1
-fi
-rm -f "$test_file"
 
 # 清理函数：删除临时工作目录
 # 在脚本退出、中断或终止时自动调用
