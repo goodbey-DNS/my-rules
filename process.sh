@@ -35,6 +35,14 @@ if [[ ! -d "$WORK_DIR" ]]; then
     exit 1
 fi
 
+# 测试临时目录写入权限
+test_file="$WORK_DIR/.test-$$"
+if ! touch "$test_file" 2>/dev/null; then
+    echo "❌ 错误：临时目录无写入权限: $WORK_DIR" >&2
+    exit 1
+fi
+rm -f "$test_file"
+
 # 清理函数：删除临时工作目录
 # 在脚本退出、错误、中断或终止时自动调用
 cleanup() {
@@ -147,7 +155,7 @@ if [[ $source_count -gt 0 ]]; then
         fi
         
         cache_file="$CACHE_DIR/$(echo -n "$url" | md5sum | cut -d' ' -f1)"
-        temp_file="$WORK_DIR/$(date +%s%N)-$RANDOM.tmp"
+        temp_file=$(mktemp "$WORK_DIR/download.XXXXXX")
         
         # 检查缓存
         if [[ -f "$cache_file" && -r "$cache_file" ]]; then
