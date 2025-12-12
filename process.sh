@@ -44,13 +44,13 @@ fi
 rm -f "$test_file"
 
 # 清理函数：删除临时工作目录
-# 在脚本退出、错误、中断或终止时自动调用
+# 在脚本退出、中断或终止时自动调用
 cleanup() {
     local exit_code=$?
-    rm -rf "$WORK_DIR" 2>/dev/null
+    [[ -n "$WORK_DIR" && -d "$WORK_DIR" ]] && rm -rf "$WORK_DIR" 2>/dev/null
     return $exit_code
 }
-trap cleanup EXIT ERR INT TERM
+trap cleanup EXIT INT TERM
 
 # 获取北京时间
 # 返回: 格式化的北京时间字符串
@@ -155,7 +155,7 @@ if [[ $source_count -gt 0 ]]; then
         fi
         
         cache_file="$CACHE_DIR/$(echo -n "$url" | md5sum | cut -d' ' -f1)"
-        temp_file=$(mktemp "$WORK_DIR/download.XXXXXX")
+        temp_file="$WORK_DIR/download-$$-$RANDOM.tmp"
         
         # 检查缓存
         if [[ -f "$cache_file" && -r "$cache_file" ]]; then
