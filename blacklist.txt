@@ -79,7 +79,12 @@
 ||un.m.jd.com^
 ||vectormap0.bdimg.com^
 ||video-zb.cloudvideocdn.taobao.com^
+||vdefault-9.sjxydc.com^
+||api.xsj.wasu.tv^
+||ttby.v.smtcdns.com^
+||wanshifuapp.com^
 ||virtual.uplus.com^
 ||vip.xunlei.com^
 ||wl.jd.com^
+
 ||youzan.com^
