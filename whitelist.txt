@@ -57,3 +57,4 @@
 @@||system.cbackup.com^
 @@||cloudflare.com^
 @@||dns.google^
+@@||douyincdn.com^
