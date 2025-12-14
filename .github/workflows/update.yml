@@ -14,13 +14,18 @@ on:
     - cron: '0 18 * * *'  # UTC 18:00 = 北京时间次日凌晨2点
   workflow_dispatch:
 
+# 并发控制：确保同一时间只有一个工作流运行
+concurrency:
+  group: adblock-update
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     
     steps:
       - name: 检出仓库
@@ -34,7 +39,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/adblock-sources
-          key: sources-${{ hashFiles('sources.txt') }}
+          key: sources-${{ hashFiles('sources.txt', 'process.sh', 'whitelist.txt', 'blacklist.txt') }}
           restore-keys: |
             sources-
 
@@ -43,10 +48,28 @@ jobs:
           echo "━━━━━━ 环境信息 ━━━━━━"
           echo "磁盘空间："
           df -h | grep -E '^/dev|Filesystem' || true
+          
+          # 检查磁盘空间是否充足（至少1GB可用）
+          available_kb=$(df . | awk 'NR==2 {print $4}')
+          if [[ $available_kb -lt 1048576 ]]; then
+            echo "⚠️  警告：磁盘空间不足1GB（可用：$((available_kb / 1024))MB）"
+          else
+            echo "✅ 磁盘空间充足（可用：$((available_kb / 1024))MB）"
+          fi
           echo ""
+          
           echo "内存使用："
           free -h || true
+          
+          # 检查可用内存是否充足（至少500MB）
+          available_mem=$(free -m | awk 'NR==2{print $7}')
+          if [[ $available_mem -lt 500 ]]; then
+            echo "⚠️  警告：可用内存不足500MB（可用：${available_mem}MB）"
+          else
+            echo "✅ 内存充足（可用：${available_mem}MB）"
+          fi
           echo ""
+          
           echo "网络连通性："
           curl -s --connect-timeout 5 --max-time 10 -o /dev/null https://www.github.com && echo "✅ 网络正常" || echo "⚠️  网络连接异常"
 
@@ -65,7 +88,8 @@ jobs:
             fi
           done
           
-          if ! sudo apt-get install -y curl ca-certificates grep sed coreutils findutils; then
+          # 只安装可能缺失的ca-certificates，其他都是系统核心包
+          if ! sudo apt-get install -y ca-certificates; then
             echo "❌ 依赖安装失败"
             exit 1
           fi
@@ -79,7 +103,23 @@ jobs:
               echo "❌ $file 不存在"
               exit 1
             fi
-            echo "✓ $file 存在"
+            
+            if [[ ! -r "$file" ]]; then
+              echo "❌ $file 不可读"
+              exit 1
+            fi
+            
+            # 检测BOM标记（UTF-8 BOM）
+            if head -c 3 "$file" | grep -q $'\xEF\xBB\xBF'; then
+              echo "⚠️  $file 包含UTF-8 BOM标记（已自动处理）"
+            fi
+            
+            # 检查是否为空文件（允许为空，但需提示）
+            if [[ ! -s "$file" ]]; then
+              echo "⚠️  $file 为空文件"
+            fi
+            
+            echo "✓ $file 验证通过"
           done
 
       - name: 执行规则处理（去重合并）
@@ -94,14 +134,38 @@ jobs:
             exit 1
           fi
           
+          # 健康检查：清理可能存在的损坏文件
           rm -f adblock.txt reports.txt README.md
           
-          if ! ./process.sh 2>&1 | tee process.log; then
-            echo "❌ 脚本执行失败"
-            echo "━━━━━━ 错误日志（最后50行）━━━━━━"
-            tail -n 50 process.log || true
-            exit 1
-          fi
+          # 执行处理，失败时自动清理缓存并重试一次
+          max_attempts=2
+          attempt=1
+          
+          while [[ $attempt -le $max_attempts ]]; do
+            echo "执行尝试 $attempt/$max_attempts..."
+            
+            if ./process.sh 2>&1 | tee process.log; then
+              echo "✅ 第 $attempt 次尝试成功"
+              break
+            else
+              echo "❌ 第 $attempt 次尝试失败"
+              
+              if [[ $attempt -lt $max_attempts ]]; then
+                echo "🔄 自动清理并重试..."
+                # 清理可能损坏的缓存
+                rm -rf ~/.cache/adblock-sources/* 2>/dev/null || true
+                # 清理临时文件
+                rm -f .tmp-work-* 2>/dev/null || true
+                sleep 5
+              else
+                echo "━━━━━━ 错误日志（最后50行）━━━━━━"
+                tail -n 50 process.log || true
+                exit 1
+              fi
+            fi
+            
+            attempt=$((attempt + 1))
+          done
           
           if [[ ! -f adblock.txt ]] || [[ ! -f reports.txt ]] || [[ ! -f README.md ]]; then
             echo "❌ 生成文件缺失"
@@ -110,7 +174,6 @@ jobs:
           fi
           
           ls -lh adblock.txt reports.txt README.md
-          rm -f process.log
           
           # 验证文件内容
           if [[ ! -f adblock.txt ]]; then
@@ -123,6 +186,57 @@ jobs:
             echo "❌ adblock.txt 内容异常（少于10行，实际 $line_count 行）"
             exit 1
           fi
+          
+          # 验证实际有效规则数（排除注释和空行）
+          valid_rules=$(grep -v '^!' adblock.txt | grep -v '^$' | wc -l)
+          if [[ $valid_rules -eq 0 ]]; then
+            echo "❌ adblock.txt 不包含有效规则"
+            exit 1
+          fi
+          
+          echo "✅ adblock.txt 验证通过（总行数: $line_count, 有效规则: $valid_rules）"
+
+      - name: 生成运行总结
+        if: always()
+        run: |
+          echo "━━━━━━ 运行总结 ━━━━━━"
+          echo "时间：$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')"
+          echo ""
+          
+          if [[ -f process.log ]]; then
+            echo "📊 处理统计："
+            grep "步骤" process.log | head -7 || true
+            echo ""
+            
+            echo "📈 关键指标："
+            grep "处理统计" process.log || true
+            echo ""
+            
+            if grep -q "所有步骤处理完成" process.log; then
+              echo "✅ 状态：成功"
+            else
+              echo "❌ 状态：失败"
+              echo ""
+              echo "⚠️  最后10行日志："
+              tail -n 10 process.log || true
+            fi
+          else
+            echo "⚠️  process.log 不存在"
+          fi
+          
+          echo ""
+          echo "📁 文件状态："
+          ls -lh adblock.txt reports.txt README.md 2>/dev/null || echo "部分文件缺失"
+
+      - name: 上传日志和调试信息
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: process-log
+          path: |
+            process.log
+            .tmp-work-*/filtered-debug.txt
+          retention-days: 7
 
       - name: 提交更新
         run: |
@@ -152,7 +266,16 @@ jobs:
             exit 0
           fi
           
-          git commit -m "自动更新规则 $(TZ='Asia/Shanghai' date +%Y%m%d_%H%M%S)"
+          # 从adblock.txt提取统计信息
+          if [[ -f adblock.txt ]]; then
+            total_rules=$(grep -c -v '^!' adblock.txt 2>/dev/null || echo 0)
+            file_size=$(du -h adblock.txt 2>/dev/null | cut -f1 || echo "0K")
+            commit_msg="自动更新规则 $(TZ='Asia/Shanghai' date +%Y%m%d_%H%M%S) | 规则数:${total_rules} | 大小:${file_size}"
+          else
+            commit_msg="自动更新规则 $(TZ='Asia/Shanghai' date +%Y%m%d_%H%M%S)"
+          fi
+          
+          git commit -m "$commit_msg"
           
           # 重试推送机制（最多3次，带随机延迟）
           for i in {1..3}; do
@@ -161,7 +284,7 @@ jobs:
               exit 0
             else
               echo "⚠️  推送失败，尝试 pull --rebase (第 $i 次)"
-              sleep $(( $(date +%N) % 10 ))
+              sleep $(( RANDOM % 10 ))
               
               if ! git pull --rebase origin main; then
                 echo "❌ Rebase 失败，可能存在冲突"
