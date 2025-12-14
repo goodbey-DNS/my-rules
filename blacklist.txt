@@ -87,6 +87,3 @@
 ||vip.xunlei.com^
 ||wl.jd.com^
 ||youzan.com^
-||npcitem.jd.hk^
-||os.oceancloudapi.com^
-||ossapi.baidu.com^
