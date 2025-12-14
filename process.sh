@@ -244,21 +244,29 @@ else
 fi
 
 echo "步骤3/7: 清洗与去重..."
-if [[ -s raw-rules.txt ]]; then
-    # 仅保留基础语法：||domain.com^ (不含路径、端口、参数，支持单字符域名)
-    (grep '^\|\|' raw-rules.txt | \
-    grep -E '^\|\|[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?\^$' | \
-    grep -v '^@@' | \
-    sort -u > cleaned.txt) 2>/dev/null || true
+if [[ -s "$WORK_DIR/raw-rules.txt" ]]; then
+    raw_count=$(wc -l < "$WORK_DIR/raw-rules.txt" 2>/dev/null || echo 0)
+    echo "  └─ 原始规则：$raw_count 条"
+    
+    # 保留AdGuard规则：以||开头，过滤掉注释和异常规则
+    (grep '^\|\|' "$WORK_DIR/raw-rules.txt" 2>/dev/null | \
+    grep -v '^@@' 2>/dev/null | \
+    grep -v '^!#' 2>/dev/null | \
+    grep -v '^!' 2>/dev/null | \
+    sort -u > "$WORK_DIR/cleaned.txt") 2>/dev/null || true
     
     # 确保 cleaned.txt 存在
-    [[ ! -f cleaned.txt ]] && touch cleaned.txt
+    [[ ! -f "$WORK_DIR/cleaned.txt" ]] && touch "$WORK_DIR/cleaned.txt"
     
-    cleaned_count=$(wc -l < cleaned.txt 2>/dev/null || echo 0)
+    cleaned_count=$(wc -l < "$WORK_DIR/cleaned.txt" 2>/dev/null || echo 0)
     echo "  └─ 清洗后：$cleaned_count 条"
+    
+    if [[ $cleaned_count -eq 0 && $raw_count -gt 0 ]]; then
+        echo "  └─ ⚠️  所有规则都被过滤，请检查规则格式" >&2
+    fi
 else
     echo "  └─ ⚠️  raw-rules.txt 为空，跳过" >&2
-    > cleaned.txt || touch cleaned.txt
+    > "$WORK_DIR/cleaned.txt" || touch "$WORK_DIR/cleaned.txt"
 fi
 
 echo "步骤4/7: 检测黑名单重复..."
@@ -271,9 +279,9 @@ blacklist_content=$(extract_valid_lines "blacklist.txt")
 } > "$REPORT_FILE"
 
 duplicate_count=0
-> temp-dup.txt
+> "$WORK_DIR/temp-dup.txt"
 
-if [[ -s cleaned.txt && -n "$blacklist_content" ]]; then
+if [[ -s "$cleaned_file" && -n "$blacklist_content" ]]; then
     set +e  # 允许 grep 未匹配
     
     while IFS= read -r rule; do
@@ -290,13 +298,11 @@ if [[ -s cleaned.txt && -n "$blacklist_content" ]]; then
         [[ "$normalized_rule" != *"^" ]] && normalized_rule="${normalized_rule}^"
         
         # 完全匹配检测（基础规则对基础规则）
-        if grep -Fxq "$normalized_rule" cleaned.txt 2>/dev/null; then
-            echo "$rule" >> temp-dup.txt
+        if grep -Fxq "$normalized_rule" "$cleaned_file" 2>/dev/null; then
+            echo "$rule" >> "$WORK_DIR/temp-dup.txt"
             ((duplicate_count++))
         fi
     done <<< "$blacklist_content"
-    
-    set -e  # 恢复错误退出
 fi
 
 if [[ $duplicate_count -gt 0 ]]; then
@@ -326,7 +332,7 @@ total_blacklist=0
 [[ -n "$sources_lines" ]] && total_sources=$(echo "$sources_lines" | grep -c '.' 2>/dev/null || echo 0)
 [[ -n "$whitelist_lines" ]] && total_whitelist=$(echo "$whitelist_lines" | grep -c '.' 2>/dev/null || echo 0)
 [[ -n "$blacklist_lines" ]] && total_blacklist=$(echo "$blacklist_lines" | grep -c '.' 2>/dev/null || echo 0)
-total_rules=$(wc -l < cleaned.txt 2>/dev/null || echo 0)
+total_rules=$(wc -l < "$cleaned_file" 2>/dev/null || echo 0)
 
 {
     echo "! 标题：广告拦截规则"
@@ -340,16 +346,14 @@ total_rules=$(wc -l < cleaned.txt 2>/dev/null || echo 0)
 } > "$ADBLOCK_FILE"
 
 # 最终合并顺序：白名单 → 黑名单 → 网络源
-set +e  # 允许文件不存在
 extract_whitelist_lines "whitelist.txt" >> "$ADBLOCK_FILE" 2>/dev/null
 extract_valid_lines "blacklist.txt" >> "$ADBLOCK_FILE" 2>/dev/null
-if [[ -s cleaned.txt ]]; then
-    cat cleaned.txt >> "$ADBLOCK_FILE" 2>/dev/null || {
+if [[ -s "$cleaned_file" ]]; then
+    cat "$cleaned_file" >> "$ADBLOCK_FILE" 2>/dev/null || {
         echo "❌ 错误：无法追加网络源规则" >&2
         exit 1
     }
 fi
-set -e  # 恢复错误退出
 
 # 计算并替换文件大小占位符
 file_size=$(du -h "$ADBLOCK_FILE" 2>/dev/null | cut -f1 || echo "0K")
@@ -393,7 +397,7 @@ if [[ ! -s "$README_FILE" ]]; then
 fi
 
 echo "步骤7/7: 清理临时文件..."
-rm -f raw-rules.txt cleaned.txt temp-dup.txt
+rm -rf "$WORK_DIR"
 
 # 确保所有统计变量有效（在使用前设置默认值）
 source_count=${source_count:-0}
