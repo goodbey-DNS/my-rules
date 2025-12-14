@@ -238,7 +238,7 @@ if [[ $source_count -gt 0 ]]; then
         echo "  └─ ⚠️  所有网络源下载失败，将仅使用本地规则" >&2
     fi
     
-    [[ -s raw-rules.txt ]] && echo "  └─ 原始规则：$(wc -l < raw-rules.txt) 行"
+    [[ -s "$WORK_DIR/raw-rules.txt" ]] && echo "  └─ 原始规则：$(wc -l < "$WORK_DIR/raw-rules.txt") 行"
 else
     echo "  └─ ⚠️  无有效网络源" >&2
 fi
@@ -248,11 +248,16 @@ if [[ -s "$WORK_DIR/raw-rules.txt" ]]; then
     raw_count=$(wc -l < "$WORK_DIR/raw-rules.txt" 2>/dev/null || echo 0)
     echo "  └─ 原始规则：$raw_count 条"
     
-    # 保留AdGuard规则：以||开头，过滤掉注释和异常规则
+    # 只保留最基础的规则格式：||domain.com^
+    # 严格过滤：必须以||开头，以^结尾，中间不能包含/、$、@等特殊字符
     (grep '^\|\|' "$WORK_DIR/raw-rules.txt" 2>/dev/null | \
-    grep -v '^@@' 2>/dev/null | \
-    grep -v '^!#' 2>/dev/null | \
-    grep -v '^!' 2>/dev/null | \
+    grep '\^$' 2>/dev/null | \
+    grep -v '/' 2>/dev/null | \
+    grep -v '\$' 2>/dev/null | \
+    grep -v '@' 2>/dev/null | \
+    grep -v '!' 2>/dev/null | \
+    grep -v '#' 2>/dev/null | \
+    grep -E '^\|\|[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?\^$' 2>/dev/null | \
     sort -u > "$WORK_DIR/cleaned.txt") 2>/dev/null || true
     
     # 确保 cleaned.txt 存在
@@ -263,6 +268,7 @@ if [[ -s "$WORK_DIR/raw-rules.txt" ]]; then
     
     if [[ $cleaned_count -eq 0 && $raw_count -gt 0 ]]; then
         echo "  └─ ⚠️  所有规则都被过滤，请检查规则格式" >&2
+        echo "  └─ 保留格式：||domain.com^（必须以||开头，以^结尾）" >&2
     fi
 else
     echo "  └─ ⚠️  raw-rules.txt 为空，跳过" >&2
