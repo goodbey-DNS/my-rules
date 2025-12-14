@@ -28,6 +28,14 @@ if ! mkdir -p "$CACHE_DIR" 2>/dev/null; then
     exit 1
 fi
 
+# 检查必要命令
+for cmd in curl grep sed sort wc find stat md5sum; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        echo "❌ 错误：必要命令 '$cmd' 不存在" >&2
+        exit 1
+    fi
+done
+
 # 创建临时工作目录（在当前目录下，GitHub Actions 可信任）
 WORK_DIR=".tmp-work-$$"
 if ! mkdir -p "$WORK_DIR" 2>/dev/null; then
@@ -88,6 +96,15 @@ extract_whitelist_lines() {
     done < "$1" 2>/dev/null || true
 }
 
+# 检查必要文件
+for file in sources.txt whitelist.txt blacklist.txt; do
+    if [[ ! -f "$file" ]]; then
+        echo "❌ 错误：$file 文件不存在" >&2
+        echo "请创建 $file 文件（可以为空，但必须存在）" >&2
+        exit 1
+    fi
+done
+
 # 前置检查
 if [[ ! -f "sources.txt" ]]; then
     echo "❌ 错误：sources.txt 文件不存在" >&2
@@ -104,16 +121,18 @@ echo "  └─ 保留缓存：$old_cache_count 个"
 echo "步骤2/7: 下载网络源（串行模式）..."
 source_list=$(extract_valid_lines "sources.txt")
 if [[ -n "$source_list" ]]; then
-    set +e
-    source_count=$(echo "$source_list" | grep -c '.' || echo 0)
-    set -e
+    source_count=$(echo "$source_list" | grep -c '.' 2>/dev/null || echo 0)
 else
     source_count=0
 fi
 echo "  └─ 待处理源：$source_count 个"
 
 # 创建并验证输出文件
-if ! > raw-rules.txt 2>/dev/null; then
+rules_file="$WORK_DIR/raw-rules.txt"
+cleaned_file="$WORK_DIR/cleaned.txt"
+dup_file="$WORK_DIR/temp-dup.txt"
+
+if ! > "$rules_file" 2>/dev/null; then
     echo "❌ 错误：无法创建 raw-rules.txt 文件" >&2
     exit 1
 fi
@@ -147,13 +166,13 @@ if [[ $source_count -gt 0 ]]; then
         fi
         
         cache_file="$CACHE_DIR/$(echo -n "$url" | md5sum | cut -d' ' -f1)"
-        temp_file="$WORK_DIR/download-$$-$RANDOM.tmp"
+        temp_file="$WORK_DIR/download-$$-$(date +%N).tmp"
         
         # 检查缓存
         if [[ -f "$cache_file" && -r "$cache_file" ]]; then
             cache_age=$(( $(date +%s) - $(stat -c %Y "$cache_file" 2>/dev/null || echo 0) ))
             if [[ $cache_age -lt 21600 ]]; then
-                cat "$cache_file" >> raw-rules.txt 2>/dev/null || true
+                cat "$cache_file" >> "$rules_file" 2>/dev/null || true
                 echo "    └─ ✅ 使用缓存"
                 ((success_count++))
                 continue
@@ -189,7 +208,7 @@ if [[ $source_count -gt 0 ]]; then
             
             # 原子性操作：先移动，验证后追加
             if mv "$temp_file" "$cache_file" 2>/dev/null; then
-                if cat "$cache_file" >> raw-rules.txt 2>/dev/null; then
+                if cat "$cache_file" >> "$rules_file" 2>/dev/null; then
                     rules_count=$(wc -l < "$cache_file" 2>/dev/null || echo 0)
                     echo "    └─ ✅ 下载成功 ($rules_count 行)"
                     ((success_count++))
@@ -226,13 +245,11 @@ fi
 
 echo "步骤3/7: 清洗与去重..."
 if [[ -s raw-rules.txt ]]; then
-    set +e  # 允许 grep 无匹配
     # 仅保留基础语法：||domain.com^ (不含路径、端口、参数，支持单字符域名)
     (grep '^\|\|' raw-rules.txt | \
     grep -E '^\|\|[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?\^$' | \
     grep -v '^@@' | \
     sort -u > cleaned.txt) 2>/dev/null || true
-    set -e  # 恢复错误退出
     
     # 确保 cleaned.txt 存在
     [[ ! -f cleaned.txt ]] && touch cleaned.txt
@@ -303,15 +320,13 @@ sources_lines=$(extract_valid_lines "sources.txt")
 whitelist_lines=$(extract_whitelist_lines "whitelist.txt")
 blacklist_lines=$(extract_valid_lines "blacklist.txt")
 
-set +e  # 允许 grep 无匹配
 total_sources=0
 total_whitelist=0
 total_blacklist=0
-[[ -n "$sources_lines" ]] && total_sources=$(echo "$sources_lines" | grep -c '.' || echo 0)
-[[ -n "$whitelist_lines" ]] && total_whitelist=$(echo "$whitelist_lines" | grep -c '.' || echo 0)
-[[ -n "$blacklist_lines" ]] && total_blacklist=$(echo "$blacklist_lines" | grep -c '.' || echo 0)
+[[ -n "$sources_lines" ]] && total_sources=$(echo "$sources_lines" | grep -c '.' 2>/dev/null || echo 0)
+[[ -n "$whitelist_lines" ]] && total_whitelist=$(echo "$whitelist_lines" | grep -c '.' 2>/dev/null || echo 0)
+[[ -n "$blacklist_lines" ]] && total_blacklist=$(echo "$blacklist_lines" | grep -c '.' 2>/dev/null || echo 0)
 total_rules=$(wc -l < cleaned.txt 2>/dev/null || echo 0)
-set -e  # 恢复错误退出
 
 {
     echo "! 标题：广告拦截规则"
@@ -338,11 +353,8 @@ set -e  # 恢复错误退出
 
 # 计算并替换文件大小占位符
 file_size=$(du -h "$ADBLOCK_FILE" 2>/dev/null | cut -f1 || echo "0K")
-if ! sed -i "s|@@FILE_SIZE_PLACEHOLDER@@|$file_size|" "$ADBLOCK_FILE" 2>/dev/null; then
-    # 备用方案：使用临时文件
-    sed "s|@@FILE_SIZE_PLACEHOLDER@@|$file_size|" "$ADBLOCK_FILE" > "$ADBLOCK_FILE.tmp" 2>/dev/null && \
-    mv "$ADBLOCK_FILE.tmp" "$ADBLOCK_FILE" 2>/dev/null || true
-fi
+# 使用临时文件方式，避免不同系统上sed -i的兼容性问题
+sed "s|@@FILE_SIZE_PLACEHOLDER@@|$file_size|" "$ADBLOCK_FILE" > "$ADBLOCK_FILE.tmp" 2>/dev/null && mv "$ADBLOCK_FILE.tmp" "$ADBLOCK_FILE"
 
 # 验证生成的规则文件
 if [[ ! -s "$ADBLOCK_FILE" ]]; then
@@ -350,9 +362,7 @@ if [[ ! -s "$ADBLOCK_FILE" ]]; then
     exit 1
 fi
 
-set +e  # 允许 grep 无匹配
 actual_rules=$( (grep -v '^!' "$ADBLOCK_FILE" | grep -v '^$' | wc -l) 2>/dev/null || echo 0)
-set -e  # 恢复错误退出
 
 if [[ $actual_rules -eq 0 ]]; then
     echo "❌ 错误：规则文件不包含有效规则" >&2
@@ -384,6 +394,15 @@ fi
 
 echo "步骤7/7: 清理临时文件..."
 rm -f raw-rules.txt cleaned.txt temp-dup.txt
+
+# 确保所有统计变量有效（在使用前设置默认值）
+source_count=${source_count:-0}
+success_count=${success_count:-0}
+failed_count=${failed_count:-0}
+total_rules=${total_rules:-0}
+total_whitelist=${total_whitelist:-0}
+total_blacklist=${total_blacklist:-0}
+file_size=${file_size:-0K}
 
 # 确保所有统计变量有效（在使用前设置默认值）
 source_count=${source_count:-0}
