@@ -58,3 +58,4 @@
 @@||cloudflare.com^
 @@||dns.google^
 @@||douyincdn.com^
+@@||mpaas1.scrcu.com^
