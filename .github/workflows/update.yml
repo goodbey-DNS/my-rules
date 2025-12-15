@@ -50,7 +50,7 @@ jobs:
           df -h | grep -E '^/dev|Filesystem' || true
           
           # 检查磁盘空间是否充足（至少1GB可用）
-          available_kb=$(df . | awk 'NR==2 {print $4}')
+          available_kb=$(df . --output=avail 2>/dev/null | tail -n 1 | tr -d ' ' || df . | awk 'NR==2 {print $4}')
           if [[ $available_kb -lt 1048576 ]]; then
             echo "⚠️  警告：磁盘空间不足1GB（可用：$((available_kb / 1024))MB）"
           else
@@ -62,7 +62,11 @@ jobs:
           free -h || true
           
           # 检查可用内存是否充足（至少500MB）
-          available_mem=$(free -m | awk 'NR==2{print $7}')
+          available_mem=$(free -m 2>/dev/null | awk 'NR==2{print $7; exit}')
+          if [[ -z "$available_mem" || "$available_mem" == "0" ]]; then
+            # 如果无法获取可用内存，尝试计算：available = total - used
+            available_mem=$(free -m 2>/dev/null | awk 'NR==2{print $2-$3}')
+          fi
           if [[ $available_mem -lt 500 ]]; then
             echo "⚠️  警告：可用内存不足500MB（可用：${available_mem}MB）"
           else
@@ -72,55 +76,6 @@ jobs:
           
           echo "网络连通性："
           curl -s --connect-timeout 5 --max-time 10 -o /dev/null https://www.github.com && echo "✅ 网络正常" || echo "⚠️  网络连接异常"
-
-      - name: 安装依赖
-        run: |
-          # apt-get update 重试机制（最多3次）
-          for i in {1..3}; do
-            if sudo apt-get update; then
-              break
-            elif [[ $i -eq 3 ]]; then
-              echo "❌ apt-get update 失败（已重试3次）"
-              exit 1
-            else
-              echo "⚠️  apt-get update 失败，第 $i 次重试..."
-              sleep 5
-            fi
-          done
-          
-          # 只安装可能缺失的ca-certificates，其他都是系统核心包
-          if ! sudo apt-get install -y ca-certificates; then
-            echo "❌ 依赖安装失败"
-            exit 1
-          fi
-          
-          echo "✅ 依赖安装成功"
-
-      - name: 检查必要文件
-        run: |
-          for file in sources.txt whitelist.txt blacklist.txt; do
-            if [[ ! -f "$file" ]]; then
-              echo "❌ $file 不存在"
-              exit 1
-            fi
-            
-            if [[ ! -r "$file" ]]; then
-              echo "❌ $file 不可读"
-              exit 1
-            fi
-            
-            # 检测BOM标记（UTF-8 BOM）
-            if head -c 3 "$file" | grep -q $'\xEF\xBB\xBF'; then
-              echo "⚠️  $file 包含UTF-8 BOM标记（已自动处理）"
-            fi
-            
-            # 检查是否为空文件（允许为空，但需提示）
-            if [[ ! -s "$file" ]]; then
-              echo "⚠️  $file 为空文件"
-            fi
-            
-            echo "✓ $file 验证通过"
-          done
 
       - name: 执行规则处理（去重合并）
         run: |
@@ -139,16 +94,19 @@ jobs:
           
           # 执行处理，失败时自动清理缓存并重试一次
           max_attempts=2
-          attempt=1
           
-          while [[ $attempt -le $max_attempts ]]; do
+          for attempt in $(seq 1 $max_attempts); do
             echo "执行尝试 $attempt/$max_attempts..."
             
-            if ./process.sh 2>&1 | tee process.log; then
+            # 分离管道，使用PIPESTATUS获取真实退出码
+            ./process.sh 2>&1 | tee process.log
+            process_exit_code=${PIPESTATUS[0]}
+            
+            if [[ $process_exit_code -eq 0 ]]; then
               echo "✅ 第 $attempt 次尝试成功"
               break
             else
-              echo "❌ 第 $attempt 次尝试失败"
+              echo "❌ 第 $attempt 次尝试失败（退出码: $process_exit_code）"
               
               if [[ $attempt -lt $max_attempts ]]; then
                 echo "🔄 自动清理并重试..."
@@ -163,8 +121,6 @@ jobs:
                 exit 1
               fi
             fi
-            
-            attempt=$((attempt + 1))
           done
           
           if [[ ! -f adblock.txt ]] || [[ ! -f reports.txt ]] || [[ ! -f README.md ]]; then
@@ -233,9 +189,7 @@ jobs:
         if: always()
         with:
           name: process-log
-          path: |
-            process.log
-            .tmp-work-*/filtered-debug.txt
+          path: process.log
           retention-days: 7
 
       - name: 提交更新
@@ -278,24 +232,31 @@ jobs:
           git commit -m "$commit_msg"
           
           # 重试推送机制（最多3次，带随机延迟）
-          for i in {1..3}; do
+          retry_count=0
+          max_retries=3
+          
+          while [[ $retry_count -lt $max_retries ]]; do
             if git push origin main; then
               echo "✅ 规则已更新并推送"
-              exit 0
+              break
             else
-              echo "⚠️  推送失败，尝试 pull --rebase (第 $i 次)"
-              sleep $(( RANDOM % 10 ))
+              ((retry_count++))
               
-              if ! git pull --rebase origin main; then
-                echo "❌ Rebase 失败，可能存在冲突"
-                git rebase --abort 2>/dev/null || true
-                git status
+              if [[ $retry_count -lt $max_retries ]]; then
+                echo "⚠️  推送失败，尝试 pull --rebase (第 $retry_count/$max_retries 次)"
+                sleep $((RANDOM % 10))
+                
+                if ! git pull --rebase origin main; then
+                  echo "❌ Rebase 失败，可能存在冲突"
+                  git rebase --abort 2>/dev/null || true
+                  git status
+                  exit 1
+                fi
+                
+                sleep 2
+              else
+                echo "❌ 推送失败，已重试$max_retries次"
                 exit 1
               fi
-              
-              sleep 2
             fi
           done
-          
-          echo "❌ 推送失败，已重试3次"
-          exit 1
