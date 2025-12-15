@@ -82,20 +82,21 @@ extract_whitelist_lines() {
     [[ ! -f "$1" ]] && return 0
     [[ ! -r "$1" ]] && return 0
     
+    local line
     while IFS= read -r line; do
         # 移除 BOM 和首尾空白
-        line=$(echo "$line" | sed 's/^\xEF\xBB\xBF//;s/^[[:space:]]*//;s/[[:space:]]*$//')
+        local cleaned_line=$(echo "$line" | sed 's/^\xEF\xBB\xBF//;s/^[[:space:]]*//;s/[[:space:]]*$//')
         
         # 跳过空行和纯注释行
-        [[ -z "$line" || "$line" =~ ^# ]] && continue
+        [[ -z "$cleaned_line" || "$cleaned_line" =~ ^# ]] && continue
         
         # 如果包含 $important，保留整行
-        if [[ "$line" =~ \$important ]]; then
-            echo "$line"
+        if [[ "$cleaned_line" =~ \$important ]]; then
+            echo "$cleaned_line"
         else
             # 否则移除行尾注释
-            clean_line=$(echo "$line" | sed 's/[[:space:]]*#.*$//')
-            [[ -n "$clean_line" ]] && echo "$clean_line"
+            local final_line=$(echo "$cleaned_line" | sed 's/[[:space:]]*#.*$//')
+            [[ -n "$final_line" ]] && echo "$final_line"
         fi
     done < "$1" 2>/dev/null || true
 }
@@ -115,21 +116,21 @@ find "$CACHE_DIR" -maxdepth 1 -type f -mtime +7 -delete 2>/dev/null || true
 old_cache_count=$(find "$CACHE_DIR" -maxdepth 1 -type f 2>/dev/null | wc -l || echo 0)
 
 # 检查缓存总大小，超过500MB时清理最旧的文件
-cache_size_mb=$(du -sm "$CACHE_DIR" 2>/dev/null | cut -f1 || echo 0)
+cache_size_mb=$(du -s "$CACHE_DIR" 2>/dev/null | awk '{printf "%.0f", $1/1024}' || echo 0)
 if [[ $cache_size_mb -gt 500 ]]; then
     echo "  └─ ⚠️  缓存过大(${cache_size_mb}MB)，清理中..." >&2
     # 按修改时间排序，删除最旧的文件直到小于400MB
     find "$CACHE_DIR" -maxdepth 1 -type f -printf '%T@ %p\n' 2>/dev/null | sort -n | \
     while read -r timestamp file; do
         if [[ $cache_size_mb -gt 400 ]]; then
-            file_size=$(du -m "$file" 2>/dev/null | cut -f1 || echo 0)
+            file_size=$(du -s "$file" 2>/dev/null | awk '{printf "%.0f", $1/1024}' || echo 0)
             rm -f "$file" 2>/dev/null
             cache_size_mb=$((cache_size_mb - file_size))
         else
             break
         fi
     done
-    echo "  └─ 清理后缓存：$(du -sm "$CACHE_DIR" 2>/dev/null | cut -f1 || echo 0)MB"
+    echo "  └─ 清理后缓存：$(du -s "$CACHE_DIR" 2>/dev/null | awk '{printf "%.0f", $1/1024}' || echo 0)MB"
 fi
 
 echo "  └─ 保留缓存：$old_cache_count 个"
@@ -163,7 +164,7 @@ if [[ $source_count -gt 0 ]]; then
         ((current++))
         
         # 显示当前处理的URL（截取前60字符）
-        short_url=$(echo "$url" | head -c 60)
+        short_url=$(echo "$url" | cut -c1-60)
         echo "  [$current/$source_count] ${short_url}..."
         
         # 验证 URL 格式和长度
@@ -174,14 +175,14 @@ if [[ $source_count -gt 0 ]]; then
         fi
         
         # 限制 URL 长度（防止命令行溢出）
-        if [[ ${#url} -gt 2048 ]]; then
-            echo "    └─ ❌ URL过长" >&2
+        if [[ ${#url} -gt 4096 ]]; then
+            echo "    └─ ❌ URL过长（${#url}字符，最大支持4096）" >&2
             ((failed_count++))
             continue
         fi
         
-        cache_file="$CACHE_DIR/$(echo -n "$url" | md5sum | cut -d' ' -f1)"
-        temp_file=$(mktemp -p "$WORK_DIR" download.XXXXXX)
+        cache_file="$CACHE_DIR/$(printf '%s' "$url" | md5sum | cut -d' ' -f1)"
+        temp_file=$(mktemp "$WORK_DIR/download.XXXXXX")
         
         # 检查缓存
         if [[ -f "$cache_file" && -r "$cache_file" ]]; then
@@ -231,8 +232,16 @@ if [[ $source_count -gt 0 ]]; then
                 continue
             fi
             
-            # 检测HTML错误页面
-            if head -n 5 "$temp_file" | grep -qE '^(<!DOCTYPE|<html|<\?xml)' 2>/dev/null; then
+            # 检测HTML错误页面（更严格的检查）
+            file_head=$(head -n 10 "$temp_file" 2>/dev/null)
+            
+            # 检查多个指标：
+            # 1. 包含HTML标签或错误关键词
+            # 2. 文件大小很小（错误页面通常很小）
+            # 3. 不包含adblock规则的典型特征
+            if echo "$file_head" | grep -qiE '(<!DOCTYPE html|<html|<head|<title|error|404|403|500|not found|access denied)' 2>/dev/null && \
+               [[ $downloaded_size -lt 10240 ]] && \
+               ! grep -qE '^\|\|' "$temp_file" 2>/dev/null; then
                 echo "    └─ ❌ 返回HTML错误页面" >&2
                 rm -f "$temp_file" "$curl_output"
                 ((failed_count++))
@@ -257,7 +266,7 @@ if [[ $source_count -gt 0 ]]; then
             rm -f "$curl_output"
         else
             # 显示 curl 错误信息
-            error_msg=$(cat "$curl_output" 2>/dev/null | head -n 1 | tr -cd '[:print:]' | head -c 100)
+            error_msg=$(cat "$curl_output" 2>/dev/null | head -n 1 | tr -cd '[:print:]' | cut -c1-100)
             [[ -n "$error_msg" ]] && echo "    └─ ❌ 下载失败: $error_msg" >&2 || echo "    └─ ❌ 下载失败" >&2
             rm -f "$temp_file" "$curl_output"
             ((failed_count++))
@@ -284,21 +293,12 @@ if [[ -s "$WORK_DIR/raw-rules.txt" ]]; then
     # 只保留最基础的adblock规则格式：||domain.com^
     # 使用管道连接多个grep命令，避免创建中间文件，提高性能
     
-    # 步骤1：提取以||开头且以^结尾的规则
-    step1_count=$(grep '^||' "$WORK_DIR/raw-rules.txt" 2>/dev/null | grep -c '\^$' 2>/dev/null || echo 0)
-    
-    # 步骤2：排除包含特殊字符的规则（/、$、@、!、#）并验证域名格式
-    cleaned_count=$(grep '^||' "$WORK_DIR/raw-rules.txt" 2>/dev/null | \
-    grep '\^$' 2>/dev/null | \
-    grep -v '/' 2>/dev/null | \
-    grep -v '\$' 2>/dev/null | \
-    grep -v '@' 2>/dev/null | \
-    grep -v '!' 2>/dev/null | \
-    grep -v '#' 2>/dev/null | \
-    grep -E '^\|\|[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?\^$' 2>/dev/null | \
-    sort -u | \
-    tee "$WORK_DIR/cleaned.txt" | \
-    wc -l 2>/dev/null || echo 0)
+    # 清洗规则：排除包含特殊字符的规则（/、$、@、!、#）并验证域名格式
+    # 使用set +e避免grep无匹配时触发set -e导致脚本退出
+    set +e
+    grep -E '^\|\|[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?\^$' "$WORK_DIR/raw-rules.txt" 2>/dev/null | \
+    sort -u > "$WORK_DIR/cleaned.txt" 2>/dev/null
+    set -e
     
     # 确保 cleaned.txt 存在
     [[ ! -f "$WORK_DIR/cleaned.txt" ]] && touch "$WORK_DIR/cleaned.txt"
@@ -311,7 +311,6 @@ if [[ -s "$WORK_DIR/raw-rules.txt" ]]; then
         retention_rate=$((cleaned_count * 100 / raw_count))
         filtered_count=$((raw_count - cleaned_count))
         echo "  └─ 保留率：$retention_rate%（保留 $cleaned_count 条，过滤 $filtered_count 条）" >&2
-        echo "  └─ 过程：$raw_count 条原始规则 → $step1_count 条符合 ||*...*^ 格式 → $cleaned_count 条通过域名验证" >&2
     fi
     
     if [[ $cleaned_count -eq 0 && $raw_count -gt 0 ]]; then
@@ -334,53 +333,63 @@ blacklist_content=$(extract_valid_lines "blacklist.txt")
 } > "$REPORT_FILE"
 
 duplicate_count=0
-> "$WORK_DIR/temp-dup.txt"
 
 if [[ -s "$cleaned_file" && -n "$blacklist_content" ]]; then
-    set +e  # 允许 grep 未匹配
+    # 使用awk进行高效匹配，一次性处理所有规则
+    awk_script='
+    BEGIN {
+        duplicate = 0
+    }
+    NR == FNR {
+        # 读取cleaned_file，存储所有规则
+        rules[$0] = 1
+        next
+    }
+    {
+        # 读取黑名单，清理后检查4种模式
+        rule = $0
+        # 移除BOM
+        gsub(/^\xEF\xBB\xBF/, "", rule)
+        # 移除行尾注释
+        gsub(/[[:space:]]*#.*$/, "", rule)
+        # 清理首尾空白
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", rule)
+        
+        if (rule == "") next
+        
+        # 尝试4种匹配模式
+        if (rule in rules) {
+            print rule
+            duplicate++
+            next
+        }
+        if (rule !~ /^\|\|/ && ("||" rule) in rules) {
+            print rule
+            duplicate++
+            next
+        }
+        if (rule !~ /\^$/ && (rule "^") in rules) {
+            print rule
+            duplicate++
+            next
+        }
+        if (rule !~ /^\|\|/ && rule !~ /\^$/ && ("||" rule "^") in rules) {
+            print rule
+            duplicate++
+            next
+        }
+    }
+    END {
+        # 将重复数量输出到stderr
+        print duplicate > "/dev/stderr"
+    }
+    '
     
-    while IFS= read -r rule; do
-        [[ -z "$rule" ]] && continue
-        
-        # 移除行尾注释并清理空白
-        clean_rule="${rule%%\#*}"
-        clean_rule=$(echo "$clean_rule" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-        [[ -z "$clean_rule" ]] && continue
-        
-        # 尝试多种匹配模式（不修改原始规则）
-        is_duplicate=0
-        
-        # 模式1: 原始规则完全匹配
-        if grep -Fxq "$clean_rule" "$cleaned_file" 2>/dev/null; then
-            is_duplicate=1
-        fi
-        
-        # 模式2: 如果原始规则缺少 || 前缀，尝试添加后匹配
-        if [[ $is_duplicate -eq 0 && "$clean_rule" != "||"* ]]; then
-            if grep -Fxq "||${clean_rule}" "$cleaned_file" 2>/dev/null; then
-                is_duplicate=1
-            fi
-        fi
-        
-        # 模式3: 如果原始规则缺少 ^ 后缀，尝试添加后匹配
-        if [[ $is_duplicate -eq 0 && "$clean_rule" != *"^" ]]; then
-            if grep -Fxq "${clean_rule}^" "$cleaned_file" 2>/dev/null; then
-                is_duplicate=1
-            fi
-        fi
-        
-        # 模式4: 如果原始规则同时缺少 || 前缀和 ^ 后缀，尝试同时添加后匹配
-        if [[ $is_duplicate -eq 0 && "$clean_rule" != "||"* && "$clean_rule" != *"^" ]]; then
-            if grep -Fxq "||${clean_rule}^" "$cleaned_file" 2>/dev/null; then
-                is_duplicate=1
-            fi
-        fi
-        
-        if [[ $is_duplicate -eq 1 ]]; then
-            echo "$rule" >> "$WORK_DIR/temp-dup.txt"
-            ((duplicate_count++))
-        fi
-    done <<< "$blacklist_content"
+    # 执行awk，将重复规则输出到temp-dup.txt，重复数量输出到dup-count.txt
+    awk "$awk_script" "$cleaned_file" - <<< "$blacklist_content" > "$WORK_DIR/temp-dup.txt" 2> "$WORK_DIR/dup-count.txt"
+    # 从文件读取重复数量
+    duplicate_count=$(cat "$WORK_DIR/dup-count.txt" 2>/dev/null || echo 0)
+    rm -f "$WORK_DIR/dup-count.txt"
 fi
 
 if [[ $duplicate_count -gt 0 ]]; then
@@ -461,8 +470,7 @@ if [[ -f "$ADBLOCK_FILE.md5" ]]; then
         echo "❌ 错误：规则文件MD5校验失败，文件可能已损坏" >&2
         exit 1
     fi
-    # 验证通过后删除校验文件
-    rm -f "$ADBLOCK_FILE.md5"
+    echo "✅ MD5校验通过，校验文件已保留：$ADBLOCK_FILE.md5"
 fi
 
 echo "步骤6/7: 生成说明文档..."
@@ -487,65 +495,6 @@ if [[ ! -s "$README_FILE" ]]; then
     echo "❌ 错误：说明文档生成失败" >&2
     exit 1
 fi
-
-# 在清理前，如果被过滤的规则很多，在报告中添加提示
-if [[ -s "$WORK_DIR/filtered-debug.txt" ]]; then
-    filtered_count=$(wc -l < "$WORK_DIR/filtered-debug.txt" 2>/dev/null || echo 0)
-    if [[ $filtered_count -gt 20 ]]; then
-        echo "" >> "$REPORT_FILE"
-        echo "## ⚠️ 大量规则被过滤" >> "$REPORT_FILE"
-        echo "被过滤的规则数：$filtered_count" >> "$REPORT_FILE"
-        echo "查看上传的Artifact中的 filtered-debug.txt 了解详情" >> "$REPORT_FILE"
-        echo "" >> "$REPORT_FILE"
-    fi
-fi
-
-echo "步骤7/7: 清理临时文件..."
-rm -rf "$WORK_DIR"
-
-# 生成详细运行报告
-{
-    echo "# 运行报告"
-    echo "# 生成时间：$(beijing_time)"
-    echo "#"
-    echo "## 📊 处理统计"
-    echo "- 网络源总数：${source_count:-0} 个"
-    echo "- 下载成功：${success_count:-0} 个"
-    echo "- 下载失败：${failed_count:-0} 个"
-    echo "- 成功率：$([[ ${source_count:-0} -gt 0 ]] && echo $((success_count * 100 / source_count)) || echo 0)%"
-    echo "- 网络源规则：${total_rules:-0} 条"
-    echo "- 白名单规则：${total_whitelist:-0} 条"
-    echo "- 黑名单规则：${total_blacklist:-0} 条"
-    echo "- 总规则数：$((total_rules + total_whitelist + total_blacklist)) 条"
-    echo "- 文件大小：$file_size"
-    echo ""
-    echo "## 💾 资源使用"
-    echo "- 缓存目录：$CACHE_DIR"
-    echo "- 临时目录：$WORK_DIR（已清理）"
-    echo "- 缓存大小：$(du -sh "$CACHE_DIR" 2>/dev/null | cut -f1 || echo '未知')"
-    echo ""
-    echo "## ⚡ 性能指标"
-    echo "- 处理时间：$(($(date +%s) - START_TIME)) 秒"
-    echo "- 平均下载时间：$([[ ${success_count:-0} -gt 0 ]] && echo $((($(date +%s) - START_TIME) / success_count)) || echo 0) 秒/源"
-    echo ""
-    echo "## ✅ 生成文件"
-    for file in "$ADBLOCK_FILE" "$REPORT_FILE" "$README_FILE"; do
-        if [[ -f "$file" ]]; then
-            echo "- ✓ $file ($(wc -l < "$file" 2>/dev/null || echo 0) 行)"
-        else
-            echo "- ✗ $file (缺失)"
-        fi
-    done
-    echo ""
-    echo "## 📝 运行状态"
-    if [[ ${failed_count:-0} -eq 0 ]]; then
-        echo "- 状态：完全成功 ✅"
-    elif [[ ${success_count:-0} -eq 0 ]]; then
-        echo "- 状态：全部失败 ❌"
-    else
-        echo "- 状态：部分成功 ⚠️"
-    fi
-} >> "$REPORT_FILE"
 
 # 生成详细运行报告
 {
@@ -574,23 +523,25 @@ rm -rf "$WORK_DIR"
     echo ""
     echo "## ✅ 生成文件"
     for file in "$ADBLOCK_FILE" "$REPORT_FILE" "$README_FILE"; do
-        if [[ -f "$file" ]]; then
-            echo "- ✓ $file ($(wc -l < "$file" 2>/dev/null || echo 0) 行)"
-        else
-            echo "- ✗ $file (缺失)"
-        fi
+      if [[ -f "$file" ]]; then
+        echo "- ✓ $file ($(wc -l < "$file" 2>/dev/null || echo 0) 行)"
+      else
+        echo "- ✗ $file (缺失)"
+      fi
     done
     echo ""
     echo "## 📝 运行状态"
     if [[ $failed_count -eq 0 ]]; then
-        echo "- 状态：完全成功 ✅"
+      echo "- 状态：完全成功 ✅"
     elif [[ $success_count -eq 0 ]]; then
-        echo "- 状态：全部失败 ❌"
+      echo "- 状态：全部失败 ❌"
     else
-        echo "- 状态：部分成功 ⚠️"
+      echo "- 状态：部分成功 ⚠️"
     fi
 } >> "$REPORT_FILE"
 
+echo "步骤7/7: 清理临时文件..."
+rm -rf "$WORK_DIR"
 echo ""
 echo "✅ 所有步骤处理完成！"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
