@@ -49,7 +49,10 @@ fi
 # 在脚本退出、中断或终止时自动调用
 cleanup() {
     local exit_code=$?
-    [[ -n "$WORK_DIR" && -d "$WORK_DIR" ]] && rm -rf "$WORK_DIR" 2>/dev/null
+    if [[ -n "$WORK_DIR" && -d "$WORK_DIR" ]]; then
+        rm -rf "$WORK_DIR" 2>/dev/null
+        WORK_DIR=""  # 删除后重置变量
+    fi
     return $exit_code
 }
 trap cleanup EXIT INT TERM
@@ -198,7 +201,7 @@ if [[ $source_count -gt 0 ]]; then
         fi
         
         # 下载新文件（限制100MB），使用指数退避重试
-        curl_output=$(mktemp)
+        curl_output=$(mktemp "$WORK_DIR/curl.XXXXXX")
         download_success=0
         
         for retry in 1 2 3; do
@@ -295,6 +298,8 @@ if [[ -s "$WORK_DIR/raw-rules.txt" ]]; then
     
     # 清洗规则：排除包含特殊字符的规则（/、$、@、!、#）并验证域名格式
     # 使用set +e避免grep无匹配时触发set -e导致脚本退出
+    # 注意：此步骤仅清洗网络源，白名单内容（含 $important）不经过此步骤
+    # 白名单在步骤5中直接使用 extract_whitelist_lines 处理，保留 $important 标记
     set +e
     grep -E '^\|\|[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?\^$' "$WORK_DIR/raw-rules.txt" 2>/dev/null | \
     sort -u > "$WORK_DIR/cleaned.txt" 2>/dev/null
@@ -541,7 +546,7 @@ fi
 } >> "$REPORT_FILE"
 
 echo "步骤7/7: 清理临时文件..."
-rm -rf "$WORK_DIR"
+# 临时文件由 cleanup 函数自动清理，此处仅打印信息
 echo ""
 echo "✅ 所有步骤处理完成！"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
