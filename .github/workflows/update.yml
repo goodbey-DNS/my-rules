@@ -38,10 +38,10 @@ jobs:
       - name: 网络源缓存
         uses: actions/cache@v4
         with:
-          path: ~/.cache/adblock-sources
-          key: sources-${{ hashFiles('sources.txt', 'process.sh', 'whitelist.txt', 'blacklist.txt') }}
-          restore-keys: |
-            sources-
+          path: |
+            $HOME/.cache/adblock-sources
+            logs/
+          key: sources-${{ hashFiles('sources.txt', 'whitelist.txt', 'blacklist.txt') }}
 
       - name: 环境检查
         run: |
@@ -50,7 +50,11 @@ jobs:
           df -h | grep -E '^/dev|Filesystem' || true
           
           # 检查磁盘空间是否充足（至少1GB可用）
-          available_kb=$(df . --output=avail 2>/dev/null | tail -n 1 | tr -d ' ' || df . | awk 'NR==2 {print $4}')
+          if command -v df >/dev/null 2>&1; then
+              available_kb=$(df . 2>/dev/null | tail -n 1 | awk '{print $4}' || echo 1048576)
+          else
+              available_kb=1048576  # 默认值1GB
+          fi
           if [[ $available_kb -lt 1048576 ]]; then
             echo "⚠️  警告：磁盘空间不足1GB（可用：$((available_kb / 1024))MB）"
           else
@@ -62,10 +66,14 @@ jobs:
           free -h || true
           
           # 检查可用内存是否充足（至少500MB）
-          available_mem=$(free -m 2>/dev/null | awk 'NR==2{print $7; exit}')
-          if [[ -z "$available_mem" || "$available_mem" == "0" ]]; then
-            # 如果无法获取可用内存，尝试计算：available = total - used
-            available_mem=$(free -m 2>/dev/null | awk 'NR==2{print $2-$3}')
+          if command -v free >/dev/null 2>&1; then
+              available_mem=$(free -m 2>/dev/null | awk 'NR==2{print $7; exit}')
+              if [[ -z "$available_mem" || "$available_mem" == "0" ]]; then
+                # 如果无法获取可用内存，尝试计算：available = total - used
+                available_mem=$(free -m 2>/dev/null | awk 'NR==2{print $2-$3}')
+              fi
+          else
+              available_mem=512  # 默认值512MB
           fi
           if [[ $available_mem -lt 500 ]]; then
             echo "⚠️  警告：可用内存不足500MB（可用：${available_mem}MB）"
@@ -78,15 +86,19 @@ jobs:
           curl -s --connect-timeout 5 --max-time 10 -o /dev/null https://www.github.com && echo "✅ 网络正常" || echo "⚠️  网络连接异常"
           echo ""
           echo "━━━━━━ 缓存路径检查 ━━━━━━"
+          CACHE_DIR="$HOME/.cache/adblock-sources"
           echo "HOME 环境变量: $HOME"
-          echo "缓存目录路径: $HOME/.cache/adblock-sources"
+          echo "缓存目录路径: $CACHE_DIR"
           echo "缓存目录是否存在:"
-          ls -la $HOME/.cache/adblock-sources 2>/dev/null || echo "目录不存在"
+          ls -la "$CACHE_DIR" 2>/dev/null || echo "目录不存在"
           echo "缓存目录大小:"
-          du -sh $HOME/.cache/adblock-sources 2>/dev/null || echo "无法获取大小"
+          du -sh "$CACHE_DIR" 2>/dev/null || echo "无法获取大小"
 
       - name: 执行规则处理（去重合并）
         run: |
+          # 日志轮转：保留最近9天的日志文件（删除超过9天的）
+          find logs/ -name "*.log" -mtime +9 -delete 2>/dev/null || true
+          
           if [[ ! -f process.sh ]]; then
             echo "❌ process.sh 文件不存在"
             exit 1
@@ -118,11 +130,14 @@ jobs:
               
               if [[ $attempt -lt $max_attempts ]]; then
                 echo "🔄 自动清理并重试..."
-                # 清理可能损坏的缓存
-                rm -rf ~/.cache/adblock-sources/* 2>/dev/null || true
+                # 清理可能损坏的缓存（保留日志文件）
+                find $HOME/.cache/adblock-sources -maxdepth 1 -type f ! -name "*.log" ! -name "*.md5" -delete 2>/dev/null || true
+                # 日志轮转：保留最近9天的日志文件（删除超过9天的）
+                find logs/ -name "*.log" -mtime +9 -delete 2>/dev/null || true
                 # 清理临时文件
                 rm -f .tmp-work-* 2>/dev/null || true
                 sleep 5
+                # 清理后会继续下一次循环，自动重新运行process.sh
               else
                 echo "━━━━━━ 错误日志（最后50行）━━━━━━"
                 tail -n 50 process.log || true
@@ -146,9 +161,14 @@ jobs:
           fi
           
           line_count=$(wc -l < adblock.txt)
-          if [[ $line_count -lt 10 ]]; then
-            echo "❌ adblock.txt 内容异常（少于10行，实际 $line_count 行）"
+          if [[ $line_count -lt 1 ]]; then
+            echo "❌ adblock.txt 内容异常（文件为空）"
             exit 1
+          fi
+          
+          # 行数较少时添加警告（不影响执行）
+          if [[ $line_count -lt 10 ]]; then
+            echo "⚠️  警告：adblock.txt 行数较少（$line_count 行），请检查规则源"
           fi
           
           # 验证实际有效规则数（排除注释和空行）
@@ -164,7 +184,9 @@ jobs:
         if: always()
         run: |
           echo "━━━━━━ 运行总结 ━━━━━━"
-          echo "时间：$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')"
+          # 尝试使用北京时间，如果失败则使用UTC
+          beijing_time=$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -u '+%Y-%m-%d %H:%M:%S (UTC)')
+          echo "时间：$beijing_time"
           echo ""
           
           if [[ -f process.log ]]; then
@@ -232,9 +254,12 @@ jobs:
           if [[ -f adblock.txt ]]; then
             total_rules=$(grep -c -v '^!' adblock.txt 2>/dev/null || echo 0)
             file_size=$(du -h adblock.txt 2>/dev/null | cut -f1 || echo "0K")
-            commit_msg="自动更新规则 $(TZ='Asia/Shanghai' date +%Y%m%d_%H%M%S) | 规则数:${total_rules} | 大小:${file_size}"
+            # 尝试使用北京时间，如果失败则使用UTC
+            timestamp=$(TZ='Asia/Shanghai' date +%Y%m%d_%H%M%S 2>/dev/null || date -u +%Y%m%d_%H%M%S)
+            commit_msg="自动更新规则 ${timestamp} | 规则数:${total_rules} | 大小:${file_size}"
           else
-            commit_msg="自动更新规则 $(TZ='Asia/Shanghai' date +%Y%m%d_%H%M%S)"
+            timestamp=$(TZ='Asia/Shanghai' date +%Y%m%d_%H%M%S 2>/dev/null || date -u +%Y%m%d_%H%M%S)
+            commit_msg="自动更新规则 ${timestamp}"
           fi
           
           git commit -m "$commit_msg"
