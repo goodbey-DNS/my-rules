@@ -20,6 +20,8 @@ https://adguardteam.github.io/HostlistsRegistry/assets/filter_69.txt
 https://filters.adtidy.org/android/filters/2_optimized.txt
 # adgurad  移动广告
 https://filters.adtidy.org/android/filters/11_optimized.txt
+# adgurad  跟踪保护
+https://filters.adtidy.org/android/filters/3_optimized.txt
 #  Peter Lowe's Blocklist
 https://adguardteam.github.io/HostlistsRegistry/assets/filter_3.txt
 #  网络钓鱼URL黑名单
