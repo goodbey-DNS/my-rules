@@ -89,3 +89,12 @@
 ||youzan.com^
 ||9lh.cn^$important
 ||t1.hshh.org^$important
+||shangweike.cn^
+||smtcdns.com^
+||jump.m.cmbchina.com^
+||so.cmbchina.com^
+||livodportalweb.paas.cmbchina.com^
+||https://img2.mb.cmbimg.com/cdnwho.html ^
+||yummyuser-cmb.bcs.cmbchina.com^
+||ces.paas.cmbchina.com^
+||moviedmz-edge-dmz.bcs.cmbchina.com^
