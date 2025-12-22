@@ -1,8 +1,5 @@
-@@||adguard.info^
-@@||adguard.org^
 @@||amap-offlinedata.amap.com^
 @@||api-cloudprint.pantum.com^
-@@||api.adguard.io^
 @@||apilocate.amap.com^
 @@||apmplus.volces.com^
 @@||apacashier.crcgas.com^
@@ -15,7 +12,6 @@
 @@||ecovacs.cn^
 @@||ecouser.net^
 @@||fastconn-api.iot.360.cn^
-@@||file.market.xiaomi.com^
 @@||frontier-audio-ime-ws.doubao.com^
 @@||fw.koolcenter.com^
 @@||geforce.cn^
@@ -55,7 +51,5 @@
 @@||opencopy.homes^
 @@||aomeisoftware.com^
 @@||system.cbackup.com^
-@@||cloudflare.com^
-@@||dns.google^
 @@||douyincdn.com^
 @@||mpaas1.scrcu.com^
