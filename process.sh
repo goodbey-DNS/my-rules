@@ -159,12 +159,12 @@ beijing_time() {
     TZ='Asia/Shanghai' date '+%Y年%m月%d日 %H:%M:%S (北京时间)'
 }
 
-# 提取文件中的有效行
+# 提取文件中的有效行（用于黑名单等）
 # 参数: $1 - 文件路径
 # 功能: 移除 BOM、空行、注释行和行尾注释
 # 返回: 有效内容行（通过 stdout）
 # 注意: 如果文件不存在或不可读，返回空（exit code 0）
-# 示例: extract_valid_lines "sources.txt"
+# 示例: extract_valid_lines "blacklist.txt"
 extract_valid_lines() {
     [[ ! -f "$1" ]] && return 0
     [[ ! -r "$1" ]] && return 0
@@ -175,7 +175,7 @@ extract_valid_lines() {
 
 # 提取白名单的有效行（保留 $important 修饰符）
 # 参数: $1 - 文件路径
-# 功能: 移除 BOM、空行、纯注释行，但保留 $important
+# 功能: 移除 BOM、空行、纯注释行，只保留 @@||domain.com^ 或 @@||domain.com^$important 格式
 # 返回: 有效内容行（通过 stdout）
 extract_whitelist_lines() {
     [[ ! -f "$1" ]] && return 0
@@ -189,13 +189,16 @@ extract_whitelist_lines() {
         # 跳过空行和纯注释行
         [[ -z "$cleaned_line" || "$cleaned_line" =~ ^# ]] && continue
         
-        # 如果包含 $important，保留整行
-        if [[ "$cleaned_line" =~ \$important ]]; then
-            echo "$cleaned_line"
+        # 移除行尾注释
+        local final_line=$(echo "$cleaned_line" | sed 's/[[:space:]]*#.*$//')
+        [[ -z "$final_line" ]] && continue
+        
+        # 只保留符合格式的规则：@@||domain.com^ 或 @@||domain.com^$important
+        if [[ "$final_line" =~ ^@@\|\|[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?\^(\$important)?$ ]]; then
+            echo "$final_line"
         else
-            # 否则移除行尾注释
-            local final_line=$(echo "$cleaned_line" | sed 's/[[:space:]]*#.*$//')
-            [[ -n "$final_line" ]] && echo "$final_line"
+            # 其他格式不支持，跳过
+            continue
         fi
     done < "$1" 2>/dev/null || true
 }
@@ -456,12 +459,13 @@ if [[ -s "$WORK_DIR/raw-rules.txt" ]]; then
     # 只保留最基础的adblock规则格式：||domain.com^
     # 使用管道连接多个grep命令，避免创建中间文件，提高性能
     
-    # 清洗规则：排除包含特殊字符的规则（/、$、@、!、#）并验证域名格式
+    # 清洗规则：只保留 ||domain.com^ 或 domain.com 格式
     # 使用set +e避免grep无匹配时触发set -e导致脚本退出
     # 注意：此步骤仅清洗网络源，白名单内容（含 $important）不经过此步骤
     # 白名单在步骤5中直接使用 extract_whitelist_lines 处理，保留 $important 标记
     set +e
-    grep -E '^\|\|[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?\^$' "$WORK_DIR/raw-rules.txt" 2>/dev/null | \
+    # 首先提取符合格式的规则：||domain.com^ 或 domain.com
+    grep -E '^(\|\|[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?\^|[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?)$' "$WORK_DIR/raw-rules.txt" 2>/dev/null | \
     sort -u > "$WORK_DIR/cleaned.txt" 2>/dev/null
     set -e
     
@@ -614,15 +618,44 @@ fi
     echo ""
 } > "$ADBLOCK_FILE"
 
-# 最终合并顺序：白名单 → 黑名单 → 网络源
-extract_whitelist_lines "whitelist.txt" >> "$ADBLOCK_FILE" 2>/dev/null
-extract_valid_lines "blacklist.txt" >> "$ADBLOCK_FILE" 2>/dev/null
-if [[ -s "$cleaned_file" ]]; then
-    cat "$cleaned_file" >> "$ADBLOCK_FILE" 2>/dev/null || {
-        echo "❌ 错误：无法追加网络源规则" >&2
-        exit 1
-    }
+# 创建临时文件用于排序
+temp_whitelist="$WORK_DIR/temp_whitelist.txt"
+temp_blacklist="$WORK_DIR/temp_blacklist.txt"
+temp_network="$WORK_DIR/temp_network.txt"
+
+# 处理白名单规则 - 先提取规则，然后排序
+extract_whitelist_lines "whitelist.txt" > "$temp_whitelist" 2>/dev/null
+if [[ -s "$temp_whitelist" ]]; then
+    # 对白名单规则进行排序
+    sort "$temp_whitelist" > "$temp_whitelist.sorted" 2>/dev/null
+    mv "$temp_whitelist.sorted" "$temp_whitelist"
+    cat "$temp_whitelist" >> "$ADBLOCK_FILE" 2>/dev/null
 fi
+
+# 处理黑名单规则 - 先提取规则并保留原始格式，然后排序
+extract_valid_lines "blacklist.txt" > "$temp_blacklist" 2>/dev/null
+if [[ -s "$temp_blacklist" ]]; then
+    # 清洗黑名单规则：只保留 ||domain.com^ 或 domain.com 格式
+    grep -E '^(\|\|[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?\^|[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?)$' "$temp_blacklist" 2>/dev/null | \
+    sort > "$temp_blacklist.sorted" 2>/dev/null
+    mv "$temp_blacklist.sorted" "$temp_blacklist"
+    cat "$temp_blacklist" >> "$ADBLOCK_FILE" 2>/dev/null
+fi
+
+# 处理网络源规则 - 已经在前面步骤中处理过，现在排序
+if [[ -s "$cleaned_file" ]]; then
+    # 对网络源规则进行排序
+    sort "$cleaned_file" > "$temp_network" 2>/dev/null
+    if [[ -s "$temp_network" ]]; then
+        cat "$temp_network" >> "$ADBLOCK_FILE" 2>/dev/null || {
+            echo "❌ 错误：无法追加网络源规则" >&2
+            exit 1
+        }
+    fi
+fi
+
+# 清理临时文件
+rm -f "$temp_whitelist" "$temp_blacklist" "$temp_network" "$temp_whitelist.sorted" "$temp_blacklist.sorted" 2>/dev/null
 
 # 计算并替换文件大小占位符
 file_size=$(du -h "$ADBLOCK_FILE" 2>/dev/null | cut -f1 || echo "0K")
