@@ -174,6 +174,20 @@ extract_valid_lines() {
     grep -E '^\|\|[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?\^$' 2>/dev/null || true
 }
 
+# 提取 URL 列表中的有效行（用于网络源）
+# 参数: $1 - 文件路径
+# 功能: 移除 BOM、空行、注释行和行尾注释，保留有效的 URL
+# 返回: 有效内容行（通过 stdout）
+# 注意: 如果文件不存在或不可读，返回空（exit code 0）
+# 示例: extract_urls "sources.txt"
+extract_urls() {
+    [[ ! -f "$1" ]] && return 0
+    [[ ! -r "$1" ]] && return 0
+    sed 's/^\xEF\xBB\xBF//;s/[[:space:]]*$//;s/^[[:space:]]*//' "$1" 2>/dev/null | \
+    grep -vE '^#|^$' 2>/dev/null | \
+    sed 's/[[:space:]]*#.*$//' 2>/dev/null | grep -v '^$' 2>/dev/null || true
+}
+
 # 提取白名单的有效行（保留 $important 修饰符）
 # 参数: $1 - 文件路径
 # 功能: 移除 BOM、空行、纯注释行，只保留 @@||domain.com^ 或 @@||domain.com^$important 格式
@@ -241,15 +255,12 @@ if [[ $cache_size_mb -gt $MAX_CACHE_SIZE_MB ]]; then
     echo "  └─ 清理后缓存：$(du -s "$CACHE_DIR" 2>/dev/null | awk '{printf "%.0f", $1/1024}' || echo 0)MB"
 fi
 
-# 优化：清理无效源的缓存文件（不在sources.txt、whitelist.txt、blacklist.txt中的源）
-# 修复缓存键"挑食"问题：同时检查所有三个文件
+# 优化：清理无效源的缓存文件（只检查 sources.txt 中的源）
+# 修复缓存键问题：只有 sources.txt 包含 URL，用于缓存
 all_urls=""
-for file in "sources.txt" "whitelist.txt" "blacklist.txt"; do
-    if [[ -f "$file" ]]; then
-        urls=$(extract_valid_lines "$file")
-        all_urls="${all_urls}${urls}"
-    fi
-done
+if [[ -f "sources.txt" ]]; then
+    all_urls=$(extract_urls "sources.txt")
+fi
 
 if [[ -n "$all_urls" && -d "$CACHE_DIR" ]]; then
     # 构建有效缓存文件列表（基于所有URL的MD5）
@@ -285,7 +296,7 @@ echo "步骤2/7: 下载网络源（串行模式）..."
 # 3. GitHub Actions 环境资源有限：并行下载会消耗更多内存和CPU
 # 4. 缓存机制有效：已下载的源在6小时内会使用缓存，不会重复下载
 # 5. 大多数源文件较小：串行下载性能影响可接受
-source_list=$(extract_valid_lines "sources.txt")
+source_list=$(extract_urls "sources.txt")
 if [[ -n "$source_list" ]]; then
     source_count=$(echo "$source_list" | grep -c '.' 2>/dev/null || echo 0)
 else
@@ -457,16 +468,20 @@ if [[ -s "$WORK_DIR/raw-rules.txt" ]]; then
     raw_count=$(count_lines "$WORK_DIR/raw-rules.txt")
     echo "  └─ 原始规则：$raw_count 条"
     
-    # 只保留最基础的adblock规则格式：||domain.com^
+    # 只保留标准的adblock规则格式
     # 使用管道连接多个grep命令，避免创建中间文件，提高性能
     
-    # 清洗规则：只保留 ||domain.com^ 格式
+    # 清洗规则：保留标准adblock格式，包括域名规则、带修饰符的规则和正则表达式规则
     # 使用set +e避免grep无匹配时触发set -e导致脚本退出
     # 注意：此步骤仅清洗网络源，白名单内容（含 $important）不经过此步骤
     # 白名单在步骤5中直接使用 extract_whitelist_lines 处理，保留 $important 标记
     set +e
-    # 首先提取符合格式的规则：||domain.com^
-    grep -E '^\|\|[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?\^$' "$WORK_DIR/raw-rules.txt" 2>/dev/null | \
+    # 提取符合标准adblock格式的规则：
+    # 1. 域名规则: ||domain.com^
+    # 2. 带修饰符的域名规则: ||domain.com^$third-party, ||domain.com^$script, 等
+    # 3. 简单域名规则: domain.com
+    # 4. 正则表达式规则: /pattern/, @@/pattern/
+    grep -E '^(\|\|[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?\^(\$.+)?|/[a-zA-Z0-9].*/|@@/[a-zA-Z0-9].*/|[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?)$' "$WORK_DIR/raw-rules.txt" 2>/dev/null | \
     sort -u > "$WORK_DIR/cleaned.txt" 2>/dev/null
     set -e
     
@@ -485,7 +500,7 @@ if [[ -s "$WORK_DIR/raw-rules.txt" ]]; then
     
     if [[ $cleaned_count -eq 0 && $raw_count -gt 0 ]]; then
         echo "  └─ ⚠️  所有规则都被过滤，请检查规则格式" >&2
-        echo "  └─ 保留格式：||domain.com^（必须以||开头，以^结尾）" >&2
+        echo "  └─ 保留标准adblock格式：域名规则(||domain.com^)、带修饰符规则(||domain.com^$modifier)、正则表达式(/pattern/)、简单域名(domain.com)等" >&2
         echo "  └─ 域名只能包含：字母、数字、连字符(-)、点(.)" >&2
     fi
 else
@@ -590,7 +605,7 @@ if [[ -f "$ADBLOCK_FILE" && -s "$ADBLOCK_FILE" ]]; then
     echo "  └─ 已创建备份：${ADBLOCK_FILE}.bak.1" >&2
 fi
 
-sources_lines=$(extract_valid_lines "sources.txt")
+sources_lines=$(extract_urls "sources.txt")
 whitelist_lines=$(extract_whitelist_lines "whitelist.txt")
 blacklist_lines=$(extract_valid_lines "blacklist.txt")
 
