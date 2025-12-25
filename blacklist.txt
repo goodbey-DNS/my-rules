@@ -1,7 +1,6 @@
 ||9lh.cn^$important
 ||act.scrcu.com^
 ||alimei-api.aliyun.com^
-||analytics.com^
 ||api.cloud.189.cn^
 ||api.huangye.miui.com^
 ||api.map.baidu.com^
@@ -23,7 +22,6 @@
 ||csc-apm.sgcc.com.cn^
 ||devclouds.ehaier.com^
 ||deviceapi.micloud.xiaomi.net^
-||doubleclick.net^
 ||dp.push.dc.360.cn^
 ||dvfp.ftss.ccb.com^
 ||eapi.echatsoft.com^
@@ -39,7 +37,6 @@
 ||game.weixin.qq.com^
 ||gateway.im.weibo.cn^
 ||gongyi.qq.com^
-||googleapis.com^
 ||gpsonextra.net^
 ||guide-acs.m.taobao.com^
 ||hagfish.yingt.fun^
@@ -49,7 +46,6 @@
 ||ice-stunserver.xdrtc.com^
 ||iotsdk.midea.com^
 ||ir-sdk.dun.163yun.com^
-||izatcloud.net^
 ||ixigua.com^
 ||jsq.xunlei.com^
 ||jump.m.cmbchina.com^
@@ -106,6 +102,5 @@
 ||wl.jd.com^
 ||wanshifuapp.com^
 ||xiaomi.com^
-||xtracloud.net^
 ||youzan.com^
 ||yummyuser-cmb.bcs.cmbchina.com^
