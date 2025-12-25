@@ -11,7 +11,6 @@
 ||api.yuntu.21cn.com^
 ||app.ikeepfun.com^
 ||baidu.com^
-||hshh.org^
 ||time.nist.gov^
 ||bpeplus.esgcc.com.cn^
 ||cdn.dingxiang-inc.com^
@@ -104,3 +103,4 @@
 ||xiaomi.com^
 ||youzan.com^
 ||yummyuser-cmb.bcs.cmbchina.com^
+
