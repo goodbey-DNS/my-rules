@@ -42,4 +42,3 @@ https://adguardteam.github.io/HostlistsRegistry/assets/filter_29.txt
 https://hblock.molinero.dev/hosts_adblock.txt
 #   HaGeZi's Xiaomi Tracker Blocklist
 https://adguardteam.github.io/HostlistsRegistry/assets/filter_60.txt
-
