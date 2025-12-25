@@ -16,29 +16,47 @@ https://anti-ad.net/adguard.txt
 https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt
 #  ShadowWhisperer Tracking List
 https://adguardteam.github.io/HostlistsRegistry/assets/filter_69.txt
-#  adgurad 基础过滤
-https://filters.adtidy.org/android/filters/2_optimized.txt
 # adgurad  移动广告
 https://filters.adtidy.org/android/filters/11_optimized.txt
 # adgurad  跟踪保护
 https://filters.adtidy.org/android/filters/3_optimized.txt
 #  Peter Lowe's Blocklist
 https://adguardteam.github.io/HostlistsRegistry/assets/filter_3.txt
-#  网络钓鱼URL黑名单
-https://adguardteam.github.io/HostlistsRegistry/assets/filter_30.txt
-#  不可信网站列表
-https://adguardteam.github.io/HostlistsRegistry/assets/filter_10.txt
-#  恶意软件列表
-https://adguardteam.github.io/HostlistsRegistry/assets/filter_50.txt
-#  恶意软件和欺诈
-https://adguardteam.github.io/HostlistsRegistry/assets/filter_12.txt
 #  No Google
 https://adguardteam.github.io/HostlistsRegistry/assets/filter_37.txt
-#  拦截已知传播恶意软件和间谍的域名
-https://adguardteam.github.io/HostlistsRegistry/assets/filter_11.txt
 #  AdRules DNS List
 https://adguardteam.github.io/HostlistsRegistry/assets/filter_29.txt
 #  hblock
 https://hblock.molinero.dev/hosts_adblock.txt
 #   HaGeZi's Xiaomi Tracker Blocklist
 https://adguardteam.github.io/HostlistsRegistry/assets/filter_60.txt
+# Malicious URL Blocklist (URLHaus)
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_11.txt
+#uBlock₀ filters – Badware risks
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_50.txt
+# ShadowWhisperer's Malware List
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_42.txt
+#Scam Blocklist by DurableNapkin
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_10.txt
+#HaGeZi's URL Shortener Blocklist
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_68.txt
+#HaGeZi's Threat Intelligence Feeds
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_44.txt
+#HaGeZi's Encrypted DNS/VPN/TOR/Proxy Bypass
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_52.txt
+#HaGeZi's DynDNS Blocklist
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_54.txt
+#HaGeZi's Badware Hoster Blocklist
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_55.txt
+#Dandelion Sprout's Anti-Malware List
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_12.txt
+#Phishing URL Blocklist (PhishTank and OpenPhish)
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_30.txt
+#Ukrainian Security Filter
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_62.txt
+#ShadowWhisperer's Dating List
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_57.txt
+#Perflyst and Dandelion Sprout's Smart-TV Blocklist
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_7.txt
+#Dandelion Sprout's Anti Push Notifications
+https://adguardteam.github.io/HostlistsRegistry/assets/filter_39.txt
