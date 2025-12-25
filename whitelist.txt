@@ -53,3 +53,9 @@
 @@||system.cbackup.com^
 @@||douyincdn.com^
 @@||mpaas1.scrcu.com^
+@@||frontier-audio-q-hl.doubao.com^
+@@||speech.bytedance.com^
+@@||imagex.bytedanceapi.com^
+@@||frontier100-audio-ime-quic-lf.doubao.com^
+@@||tos-d-x-hl.bytedancevod.com^
+@@||tos-d-x-hl.snssdk.com^
