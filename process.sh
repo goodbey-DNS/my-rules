@@ -161,7 +161,7 @@ beijing_time() {
 
 # 提取文件中的有效行（用于黑名单等）
 # 参数: $1 - 文件路径
-# 功能: 移除 BOM、空行、注释行和行尾注释
+# 功能: 移除 BOM、空行、注释行和行尾注释，只保留 ||domain.com^ 格式的规则
 # 返回: 有效内容行（通过 stdout）
 # 注意: 如果文件不存在或不可读，返回空（exit code 0）
 # 示例: extract_valid_lines "blacklist.txt"
@@ -170,7 +170,8 @@ extract_valid_lines() {
     [[ ! -r "$1" ]] && return 0
     sed 's/^\xEF\xBB\xBF//;s/[[:space:]]*$//;s/^[[:space:]]*//' "$1" 2>/dev/null | \
     grep -vE '^#|^$' 2>/dev/null | \
-    sed 's/[[:space:]]*#.*$//' 2>/dev/null | grep -v '^$' 2>/dev/null || true
+    sed 's/[[:space:]]*#.*$//' 2>/dev/null | grep -v '^$' 2>/dev/null | \
+    grep -E '^\|\|[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?\^$' 2>/dev/null || true
 }
 
 # 提取白名单的有效行（保留 $important 修饰符）
@@ -459,13 +460,13 @@ if [[ -s "$WORK_DIR/raw-rules.txt" ]]; then
     # 只保留最基础的adblock规则格式：||domain.com^
     # 使用管道连接多个grep命令，避免创建中间文件，提高性能
     
-    # 清洗规则：只保留 ||domain.com^ 或 domain.com 格式
+    # 清洗规则：只保留 ||domain.com^ 格式
     # 使用set +e避免grep无匹配时触发set -e导致脚本退出
     # 注意：此步骤仅清洗网络源，白名单内容（含 $important）不经过此步骤
     # 白名单在步骤5中直接使用 extract_whitelist_lines 处理，保留 $important 标记
     set +e
-    # 首先提取符合格式的规则：||domain.com^ 或 domain.com
-    grep -E '^(\|\|[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?\^|[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?)$' "$WORK_DIR/raw-rules.txt" 2>/dev/null | \
+    # 首先提取符合格式的规则：||domain.com^
+    grep -E '^\|\|[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?\^$' "$WORK_DIR/raw-rules.txt" 2>/dev/null | \
     sort -u > "$WORK_DIR/cleaned.txt" 2>/dev/null
     set -e
     
@@ -635,8 +636,8 @@ fi
 # 处理黑名单规则 - 先提取规则并保留原始格式，然后排序
 extract_valid_lines "blacklist.txt" > "$temp_blacklist" 2>/dev/null
 if [[ -s "$temp_blacklist" ]]; then
-    # 清洗黑名单规则：只保留 ||domain.com^ 或 domain.com 格式
-    grep -E '^(\|\|[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?\^|[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?)$' "$temp_blacklist" 2>/dev/null | \
+    # 清洗黑名单规则：只保留 ||domain.com^ 格式
+    grep -E '^\|\|[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?\^$' "$temp_blacklist" 2>/dev/null | \
     sort > "$temp_blacklist.sorted" 2>/dev/null
     mv "$temp_blacklist.sorted" "$temp_blacklist"
     cat "$temp_blacklist" >> "$ADBLOCK_FILE" 2>/dev/null
