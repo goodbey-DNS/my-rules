@@ -114,12 +114,9 @@
 ||ydzt.jszwfw.gov.cn^
 ||ctt-er.hnzkclouds.com^
 ||spostrack.adlm.icbc.com.cn^
-||cfgc.zztfly.com^
 ||cube.weixinbridge.com^
-||acs.m.taobao.com^
 ||bytegecko.com^
 ||rellux.com.cn^
-||joying.com^
 ||joyingtrip.com^
 ||cmbchina.com^
 ||u.alipay.cn^
