@@ -40,7 +40,6 @@
 @@||render-prod-tile.amap.com^
 @@||sdkfp.jd.com^
 @@||tbapi.hei365.top^$important
-@@||time*.aliyun.com^
 @@||update.miui.com^
 @@||upbuy.com.cn^$important
 @@||waapdg.jd.com^
@@ -55,7 +54,7 @@
 @@||mpaas1.scrcu.com^
 @@||frontier-audio-q-hl.doubao.com^
 @@||speech.bytedance.com^
-@@||imagex.bytedanceapi.com^
 @@||frontier100-audio-ime-quic-lf.doubao.com^
-@@||tos-d-x-hl.bytedancevod.com^
-@@||tos-d-x-hl.snssdk.com^
+@@||os.oceancloudapi.com^
+@@||api.cloud.189.cn^
+@@||free-c1.amap.com^
