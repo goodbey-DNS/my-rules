@@ -1,10 +1,9 @@
+@@||wx-h5-lida.gasos.cn^
 @@||amap-offlinedata.amap.com^
 @@||api-cloudprint.pantum.com^
 @@||apilocate.amap.com^
-@@||apmplus.volces.com^
 @@||apacashier.crcgas.com^
 @@||app.home.360.cn^
-@@||bing.com^
 @@||dd-static.jd.com^
 @@||dingtalk.com^
 @@||dualstack-a.apilocate.amap.com^
@@ -47,8 +46,6 @@
 @@||www.66tutup.com^
 @@||www.kimi.com^
 @@||appsupport.moonshot.cn^
-@@||opencopy.homes^
-@@||aomeisoftware.com^
 @@||system.cbackup.com^
 @@||douyincdn.com^
 @@||mpaas1.scrcu.com^
@@ -58,3 +55,4 @@
 @@||os.oceancloudapi.com^
 @@||api.cloud.189.cn^
 @@||free-c1.amap.com^
+
