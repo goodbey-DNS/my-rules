@@ -1,4 +1,4 @@
-||9lh.cn^$important
+||9lh.cn^
 ||act.scrcu.com^
 ||alimei-api.aliyun.com^
 ||api.cloud.189.cn^
@@ -140,4 +140,30 @@
 ||discount.wxpapp.wechatpay.cn^
 ||altitude.map.qq.com^
 ||lbs.map.qq.com^
+||www.ydht.com^
+||aikf.f.sgcc.com.cn^
 ||recommender.ecovacs.com^
+||cdn.dcloud.net.cn^
+||ime-igw.doubao.com^
+||www.douyin.com^
+||n.douyin.com^
+||m.douyin.com^
+||cover.read.duokan.com^
+||cn.bing.com^
+||dlc.duoweisoft.com^
+||cn-iot-deviceapi.iot.360.cn^
+||api.m.jd.com^
+||ccfjma.m.jd.com^
+||second-floor-pro.pf.jd.com^
+||device-security-url.jd.com^
+||ime.doubao.com^
+||vod.300hu.com^
+||live-ws2.jd.com^
+||ap-dd1.jd.com^
+||cusplat.jd.com^
+||waimai-guide.ele.me^
+||tbm-auth.alicdn.com^
+||mobilegw.alipay.com^
+||gw.alicdn.com^
+||https://ynuf.aliapp.org/savewb.json? ^
+||n.dingtalk.com^

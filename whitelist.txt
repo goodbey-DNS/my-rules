@@ -23,4 +23,4 @@
 @@||mpaas1.scrcu.com^
 @@||api.cloud.189.cn^
 @@||free-c1.amap.com^
-
+@@||prod-chat-kimi.tos-cn-beijing.volces.com^
