@@ -128,3 +128,16 @@
 ||m.sogou.com^
 ||s3gw.cmbimg.com^
 ||mbmodulecdn.cmbimg.com^
+||p3-flow-imagex-sign.byteimg.com^
+||api3-normal-hl.doubao.com^
+||alsc-buy2.ele.me^
+||shopping.ele.me^
+||tb.ele.me^
+||mdap-app.huolala.cn^
+||uba.huolala.cn^
+||mdap-app-log.huolala.cn^
+||hll-mcv-crash-gateway.huolala.cn^
+||discount.wxpapp.wechatpay.cn^
+||altitude.map.qq.com^
+||lbs.map.qq.com^
+||recommender.ecovacs.com^
