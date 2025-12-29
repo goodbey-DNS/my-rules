@@ -156,7 +156,6 @@
 ||ccfjma.m.jd.com^
 ||second-floor-pro.pf.jd.com^
 ||device-security-url.jd.com^
-||ime.doubao.com^
 ||vod.300hu.com^
 ||live-ws2.jd.com^
 ||ap-dd1.jd.com^
