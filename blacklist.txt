@@ -133,10 +133,6 @@
 ||alsc-buy2.ele.me^
 ||shopping.ele.me^
 ||tb.ele.me^
-||mdap-app.huolala.cn^
-||uba.huolala.cn^
-||mdap-app-log.huolala.cn^
-||hll-mcv-crash-gateway.huolala.cn^
 ||discount.wxpapp.wechatpay.cn^
 ||altitude.map.qq.com^
 ||lbs.map.qq.com^
@@ -149,7 +145,6 @@
 ||n.douyin.com^
 ||m.douyin.com^
 ||cover.read.duokan.com^
-||cn.bing.com^
 ||dlc.duoweisoft.com^
 ||cn-iot-deviceapi.iot.360.cn^
 ||api.m.jd.com^
