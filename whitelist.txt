@@ -5,6 +5,10 @@
 @@||upbuy.com.cn^$important
 @@||wx-h5-lida.gasos.cn^$important
 @@||apacashier.crcgas.com^$important
+@@||frontier100-audio-ime-quic-lf.doubao.com^
+@@||speech.bytedance.com^
+@@||ime-igw.doubao.com^
+@@||ime-igw.doubao.com^
 @@||amap-offlinedata.amap.com^
 @@||api-cloudprint.pantum.com^
 @@||app.home.360.cn^
