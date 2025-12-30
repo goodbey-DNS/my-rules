@@ -157,7 +157,6 @@
 ||cusplat.jd.com^
 ||waimai-guide.ele.me^
 ||tbm-auth.alicdn.com^
-||mobilegw.alipay.com^
 ||gw.alicdn.com^
 ||https://ynuf.aliapp.org/savewb.json? ^
 ||n.dingtalk.com^
