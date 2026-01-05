@@ -32,3 +32,4 @@
 @@||api.cloud.189.cn^
 @@||free-c1.amap.com^
 @@||prod-chat-kimi.tos-cn-beijing.volces.com^
+@@||lbs.map.qq.com^

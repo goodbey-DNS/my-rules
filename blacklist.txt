@@ -66,6 +66,7 @@
 ||msgacs.m.taobao.com^
 ||mp-prod.smartmidea.net^
 ||multi-manifest.m.taobao.com^
+||https://ynuf.aliapp.org/savewb.json?^
 ||network-detect-vip.xunlei.com^
 ||nhapi02.tv189.com^
 ||npcitem.jd.hk^
