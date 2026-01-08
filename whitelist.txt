@@ -30,6 +30,9 @@
 @@||system.cbackup.com^
 @@||mpaas1.scrcu.com^
 @@||api.cloud.189.cn^
-@@||free-c1.amap.com^
+@@||c1.amap.com^
 @@||prod-chat-kimi.tos-cn-beijing.volces.com^
 @@||lbs.map.qq.com^
+@@||mars.jd.com^
+@@||c1.amap.com^
+@@||comment.m.jd.com^

@@ -148,7 +148,6 @@
 ||cover.read.duokan.com^
 ||dlc.duoweisoft.com^
 ||cn-iot-deviceapi.iot.360.cn^
-||api.m.jd.com^
 ||ccfjma.m.jd.com^
 ||second-floor-pro.pf.jd.com^
 ||device-security-url.jd.com^
