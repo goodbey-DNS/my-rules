@@ -7,9 +7,9 @@
 @@||upbuy.com.cn^$important
 @@||wx-h5-lida.gasos.cn^
 @@||apacashier.crcgas.com^$important
-@@||frontier100-audio-ime-quic-lf.doubao.com^
-@@||speech.bytedance.com^
-@@||ime-igw.doubao.com^
+@@||update.miui.com^
+@@||www.kimi.com^
+@@||prod-chat-kimi.tos-cn-beijing.volces.com^
 @@||mobilegw.alipay.com^
 @@||amap-offlinedata.amap.com^
 @@||api-cloudprint.pantum.com^
@@ -21,8 +21,6 @@
 @@||m5.amap.com^
 @@||qr.95516.com^
 @@||render-prod-tile.amap.com^
-@@||appsupport.moonshot.cn^
-@@||system.cbackup.com^
 @@||mpaas1.scrcu.com^
 @@||api.cloud.189.cn^
 @@||c1.amap.com^

@@ -1,3 +1,10 @@
+||netpay.95598pay.com^
+||csc-open.sgcc.com.cn^
+||mpaas.scrcu.com^
+||95516.com^
+||dg.k.jd.com^
+||wenjuan.lap.360.cn^
+||ac-api.iot.360.cn^
 ||9lh.cn^
 ||act.scrcu.com^
 ||alimei-api.aliyun.com^
